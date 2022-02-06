@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """shrink.py
 
-Provides a utility class which applies a recursive `lipo -remove` for 
+Provides a utility class which applies a recursive `lipo -remove` for
 binaries of a given architecture in a folder.
 
 Note: you can reduce the logging verbosity by making DEBUG=False
@@ -19,7 +19,8 @@ DEBUG = True
 
 
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S",
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S",
     level=logging.DEBUG if DEBUG else logging.INFO
 )
 
@@ -101,13 +102,10 @@ class Shrink:
         parser = argparse.ArgumentParser(description=cls.__doc__)
         option = parser.add_argument
         option("path", type=str, help="a folder containing binaries to shrink")
-        option(
-            "--arch",
-            "-a",
-            default="arm64",
-            help="binary architecture to drop (arm64|x86_64|i386)",
-        )
-        option("--dry-run", "-d", action="store_true", help="run without actual changes.")
+        option("--arch", "-a", default="arm64",
+               help="binary architecture to drop (arm64|x86_64|i386)")
+        option("--dry-run", "-d", action="store_true",
+               help="run without actual changes.")
         args = parser.parse_args()
         if args.path:
             cls(args.path, args.arch, args.dry_run).process()
