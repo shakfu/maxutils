@@ -41,18 +41,23 @@ import os
 import pathlib
 import subprocess
 
+
+DEBUG = True
+
+
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S",
-    level=logging.DEBUG
+    level=logging.DEBUG if DEBUG else logging.INFO
 )
 
 
 class Shrink:
-    """Utility class to recursively remove unneeded archs from fat macho-o binaries."""
+    """Recursively remove unneeded architectures from fat macho-o binaries."""
 
-    def __init__(self, path: str, arch: str = "arm64"):
+    def __init__(self, path: str, arch: str = "arm64", dry_run: bool = False):
         self.path = path
         self.arch = arch
+        self.dry_run = dry_run
         self.targets = []
         self.log = logging.getLogger(self.__class__.__name__)
 
@@ -68,7 +73,7 @@ class Shrink:
 
     def _get_size(self):
         """get total size of target path"""
-        txt = self._cmd_output(["du", "-s", "-h", self.path])
+        txt = self._cmd_output(["du", "-s", "-h", self.path]).strip()
         return txt
 
     def is_binary(self, path):
@@ -104,15 +109,18 @@ class Shrink:
 
     def process(self):
         """main process to recursive remove unneeded arch."""
-        self.log.info("BEFORE: %s", self._get_size())
+        initial_size = self._get_size()
 
         if not self.targets:
             self.collect()
 
         for path in self.targets:
-            self.remove_arch(path)
+            if not self.dry_run:
+                self.remove_arch(path)
 
-        self.log.info("AFTER: %s", self._get_size())
+        self.log.info("DONE!")
+        self.log.info("BEFORE: %s", initial_size)
+        self.log.info("AFTER:  %s", self._get_size())
 
     @classmethod
     def cmdline(cls):
@@ -126,9 +134,10 @@ class Shrink:
             default="arm64",
             help="binary architecture to drop (arm64|x86_64|i386)",
         )
+        option("--dry-run", "-d", action="store_true", help="run without actual changes.")
         args = parser.parse_args()
         if args.path:
-            cls(args.path, args.arch).process()
+            cls(args.path, args.arch, args.dry_run).process()
 
 
 if __name__ == "__main__":

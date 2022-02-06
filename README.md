@@ -48,5 +48,5 @@ optional arguments:
 
 ## TODO
 
-- [ ] add dry run
+- [x] add dry run (won't calculate space savings though)
 
