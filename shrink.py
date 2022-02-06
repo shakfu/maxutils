@@ -42,7 +42,8 @@ import pathlib
 import subprocess
 
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S",
+    level=logging.DEBUG
 )
 
 
@@ -84,8 +85,8 @@ class Shrink:
     def remove_arch(self, path):
         """removes arch from fat binary"""
         tmp = path.parent / (path.name + "__tmp")
-        self._cmd(f"lipo -remove {self.arch} {path} -output {tmp}")
-        self._cmd(f"mv {tmp} {path}")
+        self._cmd(f"lipo -remove '{self.arch}' '{path}' -output '{tmp}'")
+        self._cmd(f"mv '{tmp}' '{path}'")
 
     def collect(self):
         """build up a list of target binaries"""
