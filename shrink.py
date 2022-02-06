@@ -1,37 +1,10 @@
 #!/usr/bin/env python3
 """shrink.py
 
-Applies a recursive lipo -remove for binaries of a given architecture in a folder.
+Provides a utility class which applies a recursive `lipo -remove` for 
+binaries of a given architecture in a folder.
 
-Benefits:
-
-- Space: Save storage space: can expect reduction of >40% in size.
-- Completely safe: No negative effects on codesign or gatekeeper status of binaries.
-
-
-To check if it needs shrinking:
-    lipo -info gives 'Architectures in the fat file: <name> are: x86_64 arm64'
-
-To check if it has been shrunk:
-    lipo -info gives 'Architectures in the fat file: <name> are: x86_64'
-
-Usage:
-
-    usage: shrink.py [-h] [--arch ARCH] path
-
-    Utility class to recursively remove unneeded archs from fat macho-o binaries.
-
-    positional arguments:
-      path                  a folder containing binaries to shrink
-
-    optional arguments:
-      -h, --help            show this help message and exit
-      --arch ARCH, -a ARCH  binary architecture to drop (arm64|x86_64|i386)
-
-TODO:
-
-- [ ] add dry run
-
+Note: you can reduce the logging verbosity by making DEBUG=False
 
 """
 
