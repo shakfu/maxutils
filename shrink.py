@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """shrink.py
 
-Provides a utility class which applies a recursive `lipo -remove` for
-binaries of a given architecture in a folder.
+Provides a utility class which thins out fat binaries and is a basic wrapper
+around the `ditto --arch <arch-to-keep> ...` command.
 
 Note: you can reduce the logging verbosity by making DEBUG=False
 
@@ -13,7 +13,7 @@ import logging
 import os
 import pathlib
 import subprocess
-
+import sys
 
 DEBUG = True
 
@@ -27,74 +27,57 @@ logging.basicConfig(
 
 class Shrink:
     """Recursively remove unneeded architectures from fat macho-o binaries."""
+    ARCHES = ['x86_64', 'arm64', 'i386']
 
-    def __init__(self, path: str, arch: str = "arm64", dry_run: bool = False):
-        self.path = path
-        self.arch = arch
-        self.dry_run = dry_run
-        self.targets = []
+    def __init__(self, path: str, arch_to_keep: str = "x86_64"):
         self.log = logging.getLogger(self.__class__.__name__)
+        try:
+            assert os.path.exists(path)
+            self.path = pathlib.Path(path)
+        except AssertionError:
+            self.log.critical(f"'{path}' does not exist.")
+            sys.exit(1)
 
-    def _cmd(self, shellcmd, *args, **kwds):
+        try:
+            assert arch_to_keep in self.ARCHES
+            self.arch = arch_to_keep
+        except AssertionError:
+            self.log.critical(f"{keep_arch} not accepted. Must be one of {self.ARCHES}")
+            sys.exit(1)
+
+        self.arch = arch_to_keep
+        self.dry_run = dry_run
+
+    def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
         syscmd = shellcmd.format(*args, **kwds)
         self.log.debug(syscmd)
         os.system(syscmd)
 
-    def _cmd_output(self, arglist):
+    def cmd_output(self, arglist):
         """capture and return shell _cmd output."""
         return subprocess.check_output(arglist).decode("utf8")
 
-    def _get_size(self):
+    def get_size(self):
         """get total size of target path"""
-        txt = self._cmd_output(["du", "-s", "-h", self.path]).strip()
+        txt = self.cmd_output(["du", "-s", "-h", self.path]).strip()
         return txt
 
-    def is_binary(self, path):
-        """returns True if file is a binary file."""
-        txt = self._cmd_output(["file", "-b", str(path)])
-        return "binary" in txt.split()
-
-    def lipo_check(self, path):
-        """returns True if binary includes arch."""
-        txt = self._cmd_output(["lipo", "-info", str(path)])
-        archs = txt.split(" are: ")[1].split()
-        return self.arch in archs
-
-    def remove_arch(self, path):
+    def remove_arch(self):
         """removes arch from fat binary"""
-        tmp = path.parent / (path.name + "__tmp")
-        self._cmd(f"lipo -remove '{self.arch}' '{path}' -output '{tmp}'")
-        self._cmd(f"mv '{tmp}' '{path}'")
-
-    def collect(self):
-        """build up a list of target binaries"""
-        for root, _, files in os.walk(self.path):
-            for fname in files:
-                path = pathlib.Path(root) / fname
-                if path.suffix != "":
-                    continue
-                if path.is_symlink():
-                    continue
-                if self.is_binary(path):
-                    if self.lipo_check(path):
-                        self.log.debug("added: %s", path)
-                        self.targets.append(path)
+        tmp = self.path.parent / (self.path.name + "__tmp")
+        self.log.info("START: %s", self.path)
+        self.cmd(f"ditto --arch '{self.arch}' '{self.path}' '{tmp}'")
+        self.cmd(f"rm -rf '{self.path}'")
+        self.cmd(f"mv '{tmp}' '{self.path}'")
 
     def process(self):
         """main process to recursive remove unneeded arch."""
-        initial_size = self._get_size()
-
-        if not self.targets:
-            self.collect()
-
-        for path in self.targets:
-            if not self.dry_run:
-                self.remove_arch(path)
-
+        initial_size = self.get_size()
+        self.remove_arch()
         self.log.info("DONE!")
         self.log.info("BEFORE: %s", initial_size)
-        self.log.info("AFTER:  %s", self._get_size())
+        self.log.info("AFTER:  %s", self.get_size())
 
     @classmethod
     def cmdline(cls):
@@ -102,10 +85,8 @@ class Shrink:
         parser = argparse.ArgumentParser(description=cls.__doc__)
         option = parser.add_argument
         option("path", type=str, help="a folder containing binaries to shrink")
-        option("--arch", "-a", default="arm64",
-               help="binary architecture to drop (arm64|x86_64|i386)")
-        option("--dry-run", "-d", action="store_true",
-               help="run without actual changes.")
+        option("--arch", "-a", default="x86_64",
+               help="binary architecture to keep (arm64|x86_64|i386)")
         args = parser.parse_args()
         if args.path:
             cls(args.path, args.arch, args.dry_run).process()

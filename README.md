@@ -5,7 +5,7 @@ A python script provided for those who don't want to waste space on unneeded bin
 
 ## What it does
 
-Given a folder, it recursively applies a `lipo -remove` to drop a specified arch from binaries within the folder.
+It recurisvely 'thins' a folder of fat binaries and drops uneeded architectures from binaries within the folder.
 
 
 ## Benefits
@@ -17,36 +17,22 @@ Given a folder, it recursively applies a `lipo -remove` to drop a specified arch
 - Completely safe: No negative effects on codesign or gatekeeper status of binaries.
 
 
-## DIY
+## Usage
 
 ```
-To `check if a binary needs shrinking:
-    lipo -info <name> gives 'Architectures in the fat file: <name> are: x86_64 arm64'
+usage: shrink.py [-h] [--arch ARCH] [--dry-run] path
 
-To remove it it yourself:
-    lipo -remove <arch-to-drop> <target> -output <smaller-binary>
-    mv <smaller-binary> <target>
-
-To check if it has been shrunk:
-    lipo -info <name> gives 'Architectures in the fat file: <name> are: x86_64'
-```
-
-### Usage
-
-```
-usage: shrink.py [-h] [--arch ARCH] path
-
-Utility class to recursively remove unneeded archs from fat macho-o binaries.
+Recursively remove unneeded architectures from fat macho-o binaries.
 
 positional arguments:
   path                  a folder containing binaries to shrink
 
 optional arguments:
   -h, --help            show this help message and exit
-  --arch ARCH, -a ARCH  binary architecture to drop (arm64|x86_64|i386)
+  --arch ARCH, -a ARCH  binary architecture to keep (arm64|x86_64|i386)
 ```
 
-## TODO
+## Credits
 
-- [x] add dry run (won't calculate space savings though)
+Thanks to SOURCE AUDIO on the cycling74 dev forums for the [reference to ditto](https://cycling74.com/forums/shrink-py-a-python-script-to-shrink-multi-arch-standalones/replies/1#reply-61ffa7a92afe8b4f2844555b) which is more effective (and space saving) than my earlier efforts using `lipo --remove`
 
