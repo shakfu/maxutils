@@ -46,7 +46,6 @@ class Shrink:
             sys.exit(1)
 
         self.arch = arch_to_keep
-        self.dry_run = dry_run
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
@@ -89,7 +88,7 @@ class Shrink:
                help="binary architecture to keep (arm64|x86_64|i386)")
         args = parser.parse_args()
         if args.path:
-            cls(args.path, args.arch, args.dry_run).process()
+            cls(args.path, args.arch).process()
 
 
 if __name__ == "__main__":
