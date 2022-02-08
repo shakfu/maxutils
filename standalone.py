@@ -5,9 +5,9 @@ A cli tool to managing a number post-production tasks for a max/msp standalone.
 
 These include:
 
-- [ ] cleaning: xattr -cr PATH/TO/YOUR-APP-NAME.app
-- [ ] shrinking: ditto --arch <fat.app> <shrunk.app>
-- [ ] generate entitlements.plist
+- [x] cleaning: xattr -cr PATH/TO/YOUR-APP-NAME.app
+- [x] shrinking: ditto --arch <fat.app> <shrunk.app>
+- [x] generate entitlements.plist
 - [x] codesigning app bundle
 - [ ] packaging to pkg, zip or dmg
 - [ ] codesigning installer
@@ -15,23 +15,61 @@ These include:
 
 
 usage: standalone.py [-h] [--entitlements ENTITLEMENTS] [--arch ARCH]
-                     [--clean] [--gen-sample-entitlements]
-                     path authority
+                     [--clean] [--gen-entitlements] [--dry-run]
+                     path dev-id
 
 positional arguments:
   path                  path to appbundle
-  authority             Developer ID Application: <authority>
+  dev-id                Developer ID Application: <dev-id>
 
 optional arguments:
   -h, --help            show this help message and exit
   --entitlements ENTITLEMENTS, -e ENTITLEMENTS
-                        path to app-entitlelments.plist
+                        path to app-entitlements.plist
   --arch ARCH, -a ARCH  set architecture of app (dual|arm64|x86_64)
   --clean, -c           clean app bundle before signing
-  --gen-sample-entitlements
-                        generate sample-app-entitlements.plist
+  --gen-entitlements    generate sample-app-entitlements.plist
+  --dry-run             run process without actually doing anything
 
+
+For example:
+
+    ./standalone.py --arch=x86_64  ./myapp.app "Sam Smith"
+
+Will shrink the standalone and retain only the x86_64 architecture,
+then codesign it with the authority "Developer ID Application: Sam Smith" 
+using the default app-entitlements.plist setting:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+        <key>com.apple.security.automation.apple-events</key>
+        <true/>
+
+        <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+        <true/>
+
+        <key>com.apple.security.cs.allow-jit</key>
+        <true/>
+
+        <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+        <true/>
+
+        <key>com.apple.security.cs.disable-library-validation</key>
+        <true/>
+
+        <key>com.apple.security.device.audio-input</key>
+        <true/>
+</dict>
+</plist>
+
+
+Note: this code includes a translation of a very helpful ruby script posted
+by  Dan Nigirin on the cycling74 forum. 
+ref: https://cycling74.com/forums/mac-standalone-codesigning-2021-update)
 """
+import os
 import argparse
 import subprocess
 import pathlib
@@ -41,11 +79,12 @@ import xml.etree.ElementTree as ET
 
 try:
     import tqdm
+
     have_progressbar = True
     progressbar = tqdm.tqdm
 except ImportError:
     have_progressbar = False
-    progressbar = lambda x: x # noop
+    progressbar = lambda x: x  # noop
 
 
 DEBUG = False
@@ -73,21 +112,36 @@ com.apple.security.cs.disable-library-validation
 com.apple.security.device.audio-input"""
 
 
-
 # ----------------------------------------------------------------------------
 # MAIN CLASS
 
+
 class MaxStandalone:
-    def __init__(self, path: str, authority: str, entitlements: str = None, dry_run=False, pre_clean=False, arch=None):
+    def __init__(
+        self,
+        path: str,
+        dev_id: str,
+        entitlements: str = None,
+        pre_clean=False,
+        arch=None,
+        dry_run=False,
+    ):
         self.path = pathlib.Path(path)
         self.appname = self.path.stem
-        self.authority = authority
-        self.entitlements = pathlib.Path(entitlements).absolute()
-        self.dry_run = dry_run
+        self.authority = f"Developer ID Application: {dev_id}"
+        self.entitlements = self.handle_entitlements(entitlements)
         self.pre_clean = pre_clean
-        self.arch = arch or 'dual'
+        self.arch = arch or "dual"
+        self.dry_run = dry_run
+
         self.log = logging.getLogger(self.__class__.__name__)
         self.cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
+
+    def handle_entitlements(self, path):
+        if not path:
+            path = f"{self.appname}-entitlements.plist"
+            self.generate_entitlements(path)
+        return pathlib.Path(path).absolute()
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
@@ -115,18 +169,18 @@ class MaxStandalone:
         self.cmd(f"rm -rf '{self.path}'")
         self.cmd(f"mv '{tmp}' '{self.path}'")
 
-    def generate_entitlements(self):
-        plist = ET.Element('plist', {'version': '1.0'})
-        plist_dict = ET.SubElement(plist, 'dict')
+    def generate_entitlements(self, path):
+        plist = ET.Element("plist", {"version": "1.0"})
+        plist_dict = ET.SubElement(plist, "dict")
         for entry in ENTITLEMENTS_ENTRIES.split():
-            e = ET.SubElement(plist_dict, 'key')
+            e = ET.SubElement(plist_dict, "key")
             e.text = entry
-            v = ET.SubElement(plist_dict, 'true')
-        ET.indent(plist, space=(' '*4))
+            v = ET.SubElement(plist_dict, "true")
+        ET.indent(plist, space=(" " * 4))
 
-        with open('sample-app-entitlements.plist', 'wb') as f:
-            f.write(ENTITLEMENTS_HEADER.encode('utf8'))
-            ET.ElementTree(plist).write(f, 'utf-8')
+        with open(path, "wb") as f:
+            f.write(ENTITLEMENTS_HEADER.encode("utf8"))
+            ET.ElementTree(plist).write(f, "utf-8")
 
     def sign_group(self, category, glob_subpath):
         resources = []
@@ -150,9 +204,7 @@ class MaxStandalone:
                     encoding="utf8",
                 )
                 if res.returncode != 0:
-                    self.log.critical(
-                        f"FAILED to sign {category} -- {resource} {res.stderr}"
-                    )
+                    self.log.critical(res.stderr)
 
     def sign_runtime(self):
         self.log.info(f"signing runtime: {self.path}")
@@ -176,7 +228,7 @@ class MaxStandalone:
         if self.pre_clean:
             self.log.info("cleaning app bundle")
             self.clean()
-        if self.arch != 'dual':
+        if self.arch != "dual":
             initial_size = self.get_size()
             self.log.info(f"shrinking to {self.arch}")
             self.shrink()
@@ -187,31 +239,50 @@ class MaxStandalone:
         self.sign_runtime()
         self.log.info("DONE")
 
-        initial_size = self.get_size()
-        self.remove_arch()
-        self.log.info("DONE!")
-        self.log.info("BEFORE: %s", initial_size)
-        self.log.info("AFTER:  %s", self.get_size())
-
-
     @classmethod
     def cmdline(cls):
         """commandline interface to class."""
         parser = argparse.ArgumentParser(description=cls.__doc__)
         option = parser.add_argument
         option("path", type=str, help="path to appbundle")
-        option("authority", type=str, help="Developer ID Application: <authority>")
-        option("--entitlements", "-e", type=str, default="resources/entitlements/max-standalone-entitlements.plist",
-               help="path to app-entitlelments.plist")
-        option("--arch", "-a", default="dual",
-               help="set architecture of app (dual|arm64|x86_64)")
-        option("--clean", "-c", action="store_true",
-               help="clean app bundle before signing")
-        option("--gen-entitlements", action="store_true",
-               help="generate sample-app-entitlements.plist")
+        option("dev-id", type=str, help="Developer ID Application: <dev-id>")
+        option(
+            "--entitlements",
+            "-e",
+            type=str,
+            default="resources/entitlements/max-standalone-entitlements.plist",
+            help="path to app-entitlements.plist",
+        )
+        option(
+            "--arch",
+            "-a",
+            default="dual",
+            help="set architecture of app (dual|arm64|x86_64)",
+        )
+        option(
+            "--clean", "-c", action="store_true", help="clean app bundle before signing"
+        )
+        option(
+            "--gen-entitlements",
+            action="store_true",
+            help="generate sample-app-entitlements.plist",
+        )
+        option(
+            "--dry-run",
+            action="store_true",
+            help="run process without actually doing anything",
+        )
         args = parser.parse_args()
-        if args.path and args.authority:
-            cls(args.path, args.arch, args.entitlements, args.arch, args,clean).process()
+        if args.path and args.name:
+            cls(
+                args.path,
+                args.dev_id,
+                args.entitlements,
+                args.clean,
+                args.arch,
+                args.dry_run,
+            ).process()
+
 
 if __name__ == "__main__":
     MaxStandalone.cmdline()
