@@ -1,38 +1,13 @@
-# shrink: regain space from unneeded architectures in fat binaries.
+# maxutils: a collection of my utility scripts for max/msp
 
-A python script provided for those who don't want to waste space on unneeded binary architectures in fat binaries (macOS only).
-
-
-## What it does
-
-It recurisvely 'thins' a folder of fat binaries and drops uneeded architectures from binaries within the folder.
+This repo is intended to gather scripts (typically in python3 and for macOS) and research, to help solve issues in Max / MSP (mostly related to Standalone production).
 
 
-## Benefits
 
-- Space: Save storage space, can expect reduction of >40% in size.
+## The scripts
 
-- Applies to executables, shared libraries, frameworks.
-
-- Completely safe: No negative effects on codesign or gatekeeper status of binaries.
+- [standalone.py](standalone.py): a cli utility intended to handle max standalone post-production tasks (cleaning, shrinking, fixes, codesigning, packaging, notarization).
 
 
-## Usage
-
-```
-usage: shrink.py [-h] [--arch ARCH] [--dry-run] path
-
-Recursively remove unneeded architectures from fat macho-o binaries.
-
-positional arguments:
-  path                  a folder containing binaries to shrink
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --arch ARCH, -a ARCH  binary architecture to keep (arm64|x86_64|i386)
-```
-
-## Credits
-
-Thanks to SOURCE AUDIO on the cycling74 dev forums for the [reference to ditto](https://cycling74.com/forums/shrink-py-a-python-script-to-shrink-multi-arch-standalones/replies/1#reply-61ffa7a92afe8b4f2844555b) which is more effective (and space saving) than my earlier efforts using `lipo --remove`
+- [shrink.py](shrink.py): recursively 'thins' a folder of fat binaries by dropping uneeded architectures from binaries within the folder. This is not max specific and can be used in any macOS folder which contains fat binaries (even if they are deeply nested).
 
