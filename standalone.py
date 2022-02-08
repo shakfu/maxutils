@@ -9,16 +9,15 @@ import logging
 import os
 import plistlib
 import subprocess
-import sys
 from pathlib import Path
 
 try:
     import tqdm
 
-    have_progressbar = True
+    HAVE_PROGRESSBAR = True
     progressbar = tqdm.tqdm
 except ImportError:
-    have_progressbar = False
+    HAVE_PROGRESSBAR = False
     progressbar = lambda x: x  # noop
 
 DEBUG = False
@@ -49,6 +48,8 @@ ENTITLEMENTS = {
 
 
 class MaxStandalone:
+    """Manage post-production tasks for Max standalones.
+    """
 
     def __init__(
         self,
@@ -79,16 +80,17 @@ class MaxStandalone:
         self.log.debug(syscmd)
         os.system(syscmd)
 
-    def cmd_output(self, arglist):
+    def cmd_output(self, arglist) -> str:
         """capture and return shell cmd output."""
         return subprocess.check_output(arglist).decode("utf8")
 
-    def get_size(self):
+    def get_size(self) -> str:
         """get total size of target path"""
         txt = self.cmd_output(["du", "-s", "-h", self.path]).strip()
         return txt
 
     def clean(self):
+        """cleanup detritus from bundle"""
         self.cmd(f"xattr -cr {self.path}")
 
     def shrink(self):
@@ -99,14 +101,16 @@ class MaxStandalone:
         self.cmd(f"rm -rf '{self.path}'")
         self.cmd(f"mv '{tmp}' '{self.path}'")
 
-    def generate_entitlements(self, path=None):
+    def generate_entitlements(self, path=None) -> str:
+        """generates a default enttitelements.plist file"""
         if not path:
             path = f"{self.appname}-entitlements.plist"
-        with open(path, 'wb') as f:
-            plistlib.dump(ENTITLEMENTS, f)
+        with open(path, 'wb') as fopen:
+            plistlib.dump(ENTITLEMENTS, fopen)
         return path
 
     def sign_group(self, category, glob_subpath):
+        """used to collect and codesign items in a bundle subpath"""
         resources = []
         for ext in ["mxo", "framework", "dylib", "bundle"]:
             resources.extend([
@@ -114,22 +118,24 @@ class MaxStandalone:
                 if not i.is_symlink()
             ])
 
-        self.log.info(f"{category} : {len(resources)} found")
+        self.log.info("%s : %s found", category, len(resources))
 
         for resource in progressbar(resources):
-            if not have_progressbar:
-                self.log.info(f"{category}-{i}: {resource}")
+            if not HAVE_PROGRESSBAR:
+                self.log.info("%s: %s", category, resource)
             if not self.dry_run:
                 res = subprocess.run(
                     self.cmd_codesign + ["-f", resource],
                     capture_output=True,
                     encoding="utf8",
+                    check=True
                 )
                 if res.returncode != 0:
                     self.log.critical(res.stderr)
 
     def sign_runtime(self):
-        self.log.info(f"signing runtime: {self.path}")
+        """codesign bundle runtime."""
+        self.log.info("signing runtime: %s", self.path)
         if not self.dry_run:
             res = subprocess.run(
                 self.cmd_codesign + [
@@ -141,17 +147,19 @@ class MaxStandalone:
                 ],
                 capture_output=True,
                 encoding="utf8",
+                check=True
             )
             if res.returncode != 0:
                 self.log.critical(res.stderr)
 
     def codesign(self):
+        """codesign standalone app bundle"""
         if self.pre_clean:
             self.log.info("cleaning app bundle")
             self.clean()
         if self.arch != "dual":
             initial_size = self.get_size()
-            self.log.info(f"shrinking to {self.arch}")
+            self.log.info("shrinking to %s", self.arch)
             self.shrink()
             self.log.info("BEFORE: %s", initial_size)
             self.log.info("AFTER:  %s", self.get_size())

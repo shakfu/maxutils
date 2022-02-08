@@ -19,8 +19,8 @@ A cli tool to managing a number post-production tasks for a max/msp standalone.
 
 It has the following current and planned features:
 
-- [x] cleaning: xattr -cr PATH/TO/YOUR-APP-NAME.app
-- [x] shrinking: ditto --arch <fat.app> <shrunk.app>
+- [x] cleaning: `xattr -cr PATH/TO/YOUR-APP-NAME.app`
+- [x] shrinking: `ditto --arch <fat.app> <thin.app>`
 - [x] generate entitlements.plist
 - [x] codesigning app bundle
 - [ ] packaging to pkg, zip or dmg
