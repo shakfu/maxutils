@@ -21,7 +21,6 @@ except ImportError:
     have_progressbar = False
     progressbar = lambda x: x  # noop
 
-
 DEBUG = False
 
 logging.basicConfig(
@@ -45,13 +44,12 @@ ENTITLEMENTS = {
 # ----------------------------------------------------------------------------
 # UTILITY FUNCTIONS
 
-
-
 # ----------------------------------------------------------------------------
 # MAIN CLASS
 
 
 class MaxStandalone:
+
     def __init__(
         self,
         path: str,
@@ -71,7 +69,9 @@ class MaxStandalone:
         self.dry_run = dry_run
 
         self.log = logging.getLogger(self.__class__.__name__)
-        self.cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
+        self.cmd_codesign = [
+            "codesign", "-s", self.authority, "--timestamp", "--deep"
+        ]
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
@@ -92,7 +92,7 @@ class MaxStandalone:
         self.cmd(f"xattr -cr {self.path}")
 
     def shrink(self):
-        """removes arch from fat binary"""
+        """recursively thins fat binaries in a given folder"""
         tmp = self.path.parent / (self.path.name + "__tmp")
         self.log.info("START: %s", self.path)
         self.cmd(f"ditto --arch '{self.arch}' '{self.path}' '{tmp}'")
@@ -109,12 +109,10 @@ class MaxStandalone:
     def sign_group(self, category, glob_subpath):
         resources = []
         for ext in ["mxo", "framework", "dylib", "bundle"]:
-            resources.extend(
-                [
-                    i for i in self.path.glob(glob_subpath.format(ext=ext))
-                    if not i.is_symlink()
-                ]
-            )
+            resources.extend([
+                i for i in self.path.glob(glob_subpath.format(ext=ext))
+                if not i.is_symlink()
+            ])
 
         self.log.info(f"{category} : {len(resources)} found")
 
@@ -134,8 +132,7 @@ class MaxStandalone:
         self.log.info(f"signing runtime: {self.path}")
         if not self.dry_run:
             res = subprocess.run(
-                self.cmd_codesign
-                + [
+                self.cmd_codesign + [
                     "--options",
                     "runtime",
                     "--entitlements",
@@ -176,7 +173,8 @@ class MaxStandalone:
 
         option = parser.add_argument
         option(
-            "--verbose", "-v",
+            "--verbose",
+            "-v",
             action="store_true",
             help="increase log verbosity",
         )
@@ -184,16 +182,15 @@ class MaxStandalone:
         # ---------------------------------------------------------------------
         # subcommands
 
-        subparsers = parser.add_subparsers(
-            help="sub-command help", dest="command", metavar=""
-        )
-        
+        subparsers = parser.add_subparsers(help="sub-command help",
+                                           dest="command",
+                                           metavar="")
+
         # ---------------------------------------------------------------------
         # subcommand generate
 
         option_generate = subparsers.add_parser(
-            "generate", help="generate standalone-related files"
-        ).add_argument
+            "generate", help="generate standalone-related files").add_argument
         option_generate("path", type=str, help="path to standalone")
         option_generate(
             "--gen-entitlements",
@@ -205,15 +202,15 @@ class MaxStandalone:
         # subcommand codesign
 
         option_codesign = subparsers.add_parser(
-            "codesign", help="codesign standalone"
-        ).add_argument
+            "codesign", help="codesign standalone").add_argument
         option_codesign("path", type=str, help="path to standalone")
-        option_codesign("devid", type=str, help="Developer ID Application: <devid>")
+        option_codesign("devid",
+                        type=str,
+                        help="Developer ID Application: <devid>")
         option_codesign(
             "--entitlements",
             "-e",
             type=str,
-            # default="resources/entitlements/max-standalone-entitlements.plist",
             help="path to app-entitlements.plist",
         )
         option_codesign(
@@ -222,9 +219,10 @@ class MaxStandalone:
             default="dual",
             help="set architecture of app (dual|arm64|x86_64)",
         )
-        option_codesign(
-            "--clean", "-c", action="store_true", help="clean app bundle before signing"
-        )
+        option_codesign("--clean",
+                        "-c",
+                        action="store_true",
+                        help="clean app bundle before signing")
         option_codesign(
             "--dry-run",
             action="store_true",
@@ -234,16 +232,14 @@ class MaxStandalone:
         # ---------------------------------------------------------------------
         # subcommand package
         option_package = subparsers.add_parser(
-            "package", help="package standalone"
-        ).add_argument
+            "package", help="package standalone").add_argument
         option_package("path", type=str, help="path to standalone")
 
         # ---------------------------------------------------------------------
         # subcommand notarize
 
         option_notarize = subparsers.add_parser(
-            "notarize", help="notarize packaged standalone"
-        ).add_argument
+            "notarize", help="notarize packaged standalone").add_argument
         option_notarize("path", type=str, help="path to package")
 
         # ---------------------------------------------------------------------
@@ -252,10 +248,10 @@ class MaxStandalone:
         args = parser.parse_args()
         # print(args)
 
-        if args.command=='generate' and args.path and args.gen_entitlements:
+        if args.command == 'generate' and args.path and args.gen_entitlements:
             cls(args.path)
 
-        elif args.command=='codesign' and args.path and args.devid:
+        elif args.command == 'codesign' and args.path and args.devid:
             cls(
                 args.path,
                 args.devid,
