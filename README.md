@@ -1,7 +1,8 @@
 # maxutils: a collection of my utility scripts for max/msp
 
-This repo is intended to gather scripts (typically in python3 and for macOS) and research, to help solve issues in Max / MSP (mostly related to Standalone production).
+This repo includes scripts (typically in python3 and for macOS) to help solve issues in Max / MSP (mostly related to Standalone production).
 
+The scripts are all written in straightforward pure python3 code without any dependencies outside of the python3 standard library.
 
 
 ## The scripts
@@ -10,4 +11,3 @@ This repo is intended to gather scripts (typically in python3 and for macOS) and
 
 
 - [shrink.py](shrink.py): recursively 'thins' a folder of fat binaries by dropping uneeded architectures from binaries within the folder. This is not max specific and can be used in any macOS folder which contains fat binaries (even if they are deeply nested).
-
