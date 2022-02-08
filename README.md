@@ -69,7 +69,7 @@ For example:
 
 Will shrink the standalone and retain only the x86_64 architecture,
 then codesign it with the authority "Developer ID Application: Sam Smith" 
-using the a generated default myapp-entitlements.plist setting:
+using the default automatically generated myapp-entitlements.plist:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
