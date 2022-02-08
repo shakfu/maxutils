@@ -3,79 +3,14 @@
 
 A cli tool to managing a number post-production tasks for a max/msp standalone.
 
-These include:
-
-- [x] cleaning: xattr -cr PATH/TO/YOUR-APP-NAME.app
-- [x] shrinking: ditto --arch <fat.app> <shrunk.app>
-- [x] generate entitlements.plist
-- [x] codesigning app bundle
-- [ ] packaging to pkg, zip or dmg
-- [ ] codesigning installer
-- [ ] notarization
-
-
-usage: standalone.py [-h] [--entitlements ENTITLEMENTS] [--arch ARCH]
-                     [--clean] [--gen-entitlements] [--dry-run]
-                     path dev-id
-
-positional arguments:
-  path                  path to appbundle
-  dev-id                Developer ID Application: <dev-id>
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --entitlements ENTITLEMENTS, -e ENTITLEMENTS
-                        path to app-entitlements.plist
-  --arch ARCH, -a ARCH  set architecture of app (dual|arm64|x86_64)
-  --clean, -c           clean app bundle before signing
-  --gen-entitlements    generate sample-app-entitlements.plist
-  --dry-run             run process without actually doing anything
-
-
-For example:
-
-    ./standalone.py --arch=x86_64  ./myapp.app "Sam Smith"
-
-Will shrink the standalone and retain only the x86_64 architecture,
-then codesign it with the authority "Developer ID Application: Sam Smith" 
-using the default app-entitlements.plist setting:
-
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-        <key>com.apple.security.automation.apple-events</key>
-        <true/>
-
-        <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-        <true/>
-
-        <key>com.apple.security.cs.allow-jit</key>
-        <true/>
-
-        <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-        <true/>
-
-        <key>com.apple.security.cs.disable-library-validation</key>
-        <true/>
-
-        <key>com.apple.security.device.audio-input</key>
-        <true/>
-</dict>
-</plist>
-
-
-Note: this code includes a translation of a very helpful ruby script posted
-by  Dan Nigirin on the cycling74 forum. 
-ref: https://cycling74.com/forums/mac-standalone-codesigning-2021-update)
 """
-import os
 import argparse
-import subprocess
-import pathlib
 import logging
-import xml.etree.ElementTree as ET
-
+import os
+import plistlib
+import subprocess
+import sys
+from pathlib import Path
 
 try:
     import tqdm
@@ -98,18 +33,18 @@ logging.basicConfig(
 # ----------------------------------------------------------------------------
 # CONSTANTS
 
-ENTITLEMENTS_HEADER = """\
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-"""
+ENTITLEMENTS = {
+    "com.apple.security.automation.apple-events": True,
+    "com.apple.security.cs.allow-dyld-environment-variables": True,
+    "com.apple.security.cs.allow-jit": True,
+    "com.apple.security.cs.allow-unsigned-executable-memory": True,
+    "com.apple.security.cs.disable-library-validation": True,
+    "com.apple.security.device.audio-input": True,
+}
 
-ENTITLEMENTS_ENTRIES = """\
-com.apple.security.automation.apple-events
-com.apple.security.cs.allow-dyld-environment-variables
-com.apple.security.cs.allow-jit
-com.apple.security.cs.allow-unsigned-executable-memory
-com.apple.security.cs.disable-library-validation
-com.apple.security.device.audio-input"""
+# ----------------------------------------------------------------------------
+# UTILITY FUNCTIONS
+
 
 
 # ----------------------------------------------------------------------------
@@ -120,28 +55,23 @@ class MaxStandalone:
     def __init__(
         self,
         path: str,
-        dev_id: str,
+        devid: str = None,
         entitlements: str = None,
         pre_clean=False,
         arch=None,
         dry_run=False,
     ):
-        self.path = pathlib.Path(path)
-        self.appname = self.path.stem
-        self.authority = f"Developer ID Application: {dev_id}"
-        self.entitlements = self.handle_entitlements(entitlements)
+        self.path = Path(path)
+        self.appname = self.path.stem.lower()
+        self.devid = devid
+        self.authority = f"Developer ID Application: {devid}" if devid else None
+        self.entitlements = entitlements
         self.pre_clean = pre_clean
         self.arch = arch or "dual"
         self.dry_run = dry_run
 
         self.log = logging.getLogger(self.__class__.__name__)
         self.cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
-
-    def handle_entitlements(self, path):
-        if not path:
-            path = f"{self.appname}-entitlements.plist"
-            self.generate_entitlements(path)
-        return pathlib.Path(path).absolute()
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
@@ -169,18 +99,12 @@ class MaxStandalone:
         self.cmd(f"rm -rf '{self.path}'")
         self.cmd(f"mv '{tmp}' '{self.path}'")
 
-    def generate_entitlements(self, path):
-        plist = ET.Element("plist", {"version": "1.0"})
-        plist_dict = ET.SubElement(plist, "dict")
-        for entry in ENTITLEMENTS_ENTRIES.split():
-            e = ET.SubElement(plist_dict, "key")
-            e.text = entry
-            v = ET.SubElement(plist_dict, "true")
-        ET.indent(plist, space=(" " * 4))
-
-        with open(path, "wb") as f:
-            f.write(ENTITLEMENTS_HEADER.encode("utf8"))
-            ET.ElementTree(plist).write(f, "utf-8")
+    def generate_entitlements(self, path=None):
+        if not path:
+            path = f"{self.appname}-entitlements.plist"
+        with open(path, 'wb') as f:
+            plistlib.dump(ENTITLEMENTS, f)
+        return path
 
     def sign_group(self, category, glob_subpath):
         resources = []
@@ -224,7 +148,7 @@ class MaxStandalone:
             if res.returncode != 0:
                 self.log.critical(res.stderr)
 
-    def process(self):
+    def codesign(self):
         if self.pre_clean:
             self.log.info("cleaning app bundle")
             self.clean()
@@ -234,6 +158,9 @@ class MaxStandalone:
             self.shrink()
             self.log.info("BEFORE: %s", initial_size)
             self.log.info("AFTER:  %s", self.get_size())
+        if not self.entitlements:
+            self.entitlements = self.generate_entitlements()
+        self.entitlements = Path(self.entitlements).absolute()
         self.sign_group("externals", "Contents/Resources/C74/**/*.{ext}")
         self.sign_group("frameworks", "Contents/Frameworks/**/*.{ext}")
         self.sign_runtime()
@@ -243,45 +170,100 @@ class MaxStandalone:
     def cmdline(cls):
         """commandline interface to class."""
         parser = argparse.ArgumentParser(description=cls.__doc__)
+
+        # ---------------------------------------------------------------------
+        # common options
+
         option = parser.add_argument
-        option("path", type=str, help="path to appbundle")
-        option("dev-id", type=str, help="Developer ID Application: <dev-id>")
         option(
+            "--verbose", "-v",
+            action="store_true",
+            help="increase log verbosity",
+        )
+
+        # ---------------------------------------------------------------------
+        # subcommands
+
+        subparsers = parser.add_subparsers(
+            help="sub-command help", dest="command", metavar=""
+        )
+        
+        # ---------------------------------------------------------------------
+        # subcommand generate
+
+        option_generate = subparsers.add_parser(
+            "generate", help="generate standalone-related files"
+        ).add_argument
+        option_generate("path", type=str, help="path to standalone")
+        option_generate(
+            "--gen-entitlements",
+            action="store_true",
+            help="generate sample app-entitlements.plist",
+        )
+
+        # ---------------------------------------------------------------------
+        # subcommand codesign
+
+        option_codesign = subparsers.add_parser(
+            "codesign", help="codesign standalone"
+        ).add_argument
+        option_codesign("path", type=str, help="path to standalone")
+        option_codesign("devid", type=str, help="Developer ID Application: <devid>")
+        option_codesign(
             "--entitlements",
             "-e",
             type=str,
-            default="resources/entitlements/max-standalone-entitlements.plist",
+            # default="resources/entitlements/max-standalone-entitlements.plist",
             help="path to app-entitlements.plist",
         )
-        option(
+        option_codesign(
             "--arch",
             "-a",
             default="dual",
             help="set architecture of app (dual|arm64|x86_64)",
         )
-        option(
+        option_codesign(
             "--clean", "-c", action="store_true", help="clean app bundle before signing"
         )
-        option(
-            "--gen-entitlements",
-            action="store_true",
-            help="generate sample-app-entitlements.plist",
-        )
-        option(
+        option_codesign(
             "--dry-run",
             action="store_true",
             help="run process without actually doing anything",
         )
+
+        # ---------------------------------------------------------------------
+        # subcommand package
+        option_package = subparsers.add_parser(
+            "package", help="package standalone"
+        ).add_argument
+        option_package("path", type=str, help="path to standalone")
+
+        # ---------------------------------------------------------------------
+        # subcommand notarize
+
+        option_notarize = subparsers.add_parser(
+            "notarize", help="notarize packaged standalone"
+        ).add_argument
+        option_notarize("path", type=str, help="path to package")
+
+        # ---------------------------------------------------------------------
+        # parse arguments
+
         args = parser.parse_args()
-        if args.path and args.name:
+        # print(args)
+
+        if args.command=='generate' and args.path and args.gen_entitlements:
+            cls(args.path)
+
+        elif args.command=='codesign' and args.path and args.devid:
             cls(
                 args.path,
-                args.dev_id,
+                args.devid,
                 args.entitlements,
                 args.clean,
                 args.arch,
                 args.dry_run,
-            ).process()
+            ).codesign()
 
 
 if __name__ == "__main__":
