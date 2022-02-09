@@ -96,13 +96,13 @@ class Base:
     def __repr__(self):
         return f"<{self.__class__.__name__}>"
 
-    def cmd(self, shellcmd, *args, **kwds):
+    def cmd(self, shellcmd: str, *args, **kwds):
         """run system command."""
         syscmd = shellcmd.format(*args, **kwds)
         self.log.debug(syscmd)
         os.system(syscmd)
 
-    def cmd_output(self, arglist) -> str:
+    def cmd_output(self, arglist: list[str]) -> str:
         """capture and return shell cmd output."""
         return subprocess.check_output(arglist, encoding="utf8")
 
@@ -127,7 +127,7 @@ class Generator(Base):
         """derives lower-case app name from standalone name <appname>.app"""
         return self.path.stem.lower()
 
-    def generate_entitlements(self, path=None) -> str:
+    def generate_entitlements(self, path: str = None) -> str:
         """generates a default enttitelements.plist file"""
         if not path:
             path = f"{self.appname}-entitlements.plist"
@@ -155,7 +155,7 @@ class PreProcessor(Base):
         """get total size of target path"""
         if not path:
             path = self.path
-        return self.cmd_output(["du", "-s", "-h", path]).strip()
+        return self.cmd_output(["du", "-s", "-h", str(path)]).strip()
 
     def clean(self):
         """cleanup detritus from bundle"""
@@ -209,7 +209,7 @@ class CodeSigner(Base):
         """zip path"""
         return self.path.parent / f"{self.path.stem}.zip"
 
-    def sign_group(self, category, subpath):
+    def sign_group(self, category: str, subpath: str):
         """used to collect and codesign items in a bundle subpath"""
         resources = []
         for ext in ["mxo", "framework", "dylib", "bundle"]:
@@ -313,7 +313,7 @@ class Stapler(Base):
         a-notarized.app -> staple -> a-stapled.app
         cp extras (README.md, etc..) to output_dir
     """
-    def __init__(self, path):
+    def __init__(self, path: str):
         self.path = path
 
     def staple(self):
@@ -334,8 +334,8 @@ class Packager(Base):
         output_dir -> package -> a-complete.zip
     """
 
-    def __init__(self, path, version: str, arch: str, add_file: list[str] = None):
-        self.path = path
+    def __init__(self, path: str, version: str, arch: str, add_file: list[str] = None):
+        self.path = Path(path)
         self.version = version
         self.arch = arch
         self.extra_files = add_file
