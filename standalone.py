@@ -34,11 +34,11 @@ rootdir:
 """
 import argparse
 import datetime
+import json
 import logging
 import os
 import plistlib
 import subprocess
-import json
 import sys
 from pathlib import Path
 
@@ -190,12 +190,11 @@ class CodeSigner(Base):
         a.app -> codesign -> a-signed.app
         a-signed.app -> codesign -> a-signed.zip
     """
-    def __init__(self, path: str, dev_id: str, entitlements: str = None, dry_run: bool = False):
+    def __init__(self, path: str, dev_id: str, entitlements: str = None):
         super().__init__()
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
-        self.dry_run = dry_run
         self.authority = f"Developer ID Application: {self.dev_id}"
         self._cmd_codesign = ["codesign", "-s",
                               self.authority, "--timestamp", "--deep"]
@@ -226,35 +225,33 @@ class CodeSigner(Base):
         for resource in progressbar(resources):
             if not HAVE_PROGRESSBAR:
                 self.log.info("%s: %s", category, resource)
-            if not self.dry_run:
-                res = subprocess.run(
-                    self._cmd_codesign + ["-f", resource],
-                    capture_output=True,
-                    encoding="utf8",
-                    check=True,
-                )
-                if res.returncode != 0:
-                    self.log.critical(res.stderr)
-
-    def sign_runtime(self):
-        """codesign bundle runtime."""
-        self.log.info("signing runtime: %s", self.path)
-        if not self.dry_run:
             res = subprocess.run(
-                self._cmd_codesign
-                + [
-                    "--options",
-                    "runtime",
-                    "--entitlements",
-                    str(self.entitlements),
-                    str(self.path),
-                ],
+                self._cmd_codesign + ["-f", resource],
                 capture_output=True,
                 encoding="utf8",
                 check=True,
             )
             if res.returncode != 0:
                 self.log.critical(res.stderr)
+
+    def sign_runtime(self):
+        """codesign bundle runtime."""
+        self.log.info("signing runtime: %s", self.path)
+        res = subprocess.run(
+            self._cmd_codesign
+            + [
+                "--options",
+                "runtime",
+                "--entitlements",
+                str(self.entitlements),
+                str(self.path),
+            ],
+            capture_output=True,
+            encoding="utf8",
+            check=True,
+        )
+        if res.returncode != 0:
+            self.log.critical(res.stderr)
 
     def process(self):
         """codesign standalone app bundle"""
@@ -337,11 +334,11 @@ class Packager(Base):
         output_dir -> package -> a-complete.zip
     """
 
-    def __init__(self, path, version: str, arch: str, extra_files: list[str] = None):
+    def __init__(self, path, version: str, arch: str, add_file: list[str] = None):
         self.path = path
         self.version = version
         self.arch = arch
-        self.extra_files = extra_files
+        self.extra_files = add_file
         self.timestamp = datetime.date.today().strftime("%y%m%d")
 
     @property
@@ -422,9 +419,10 @@ class Application(metaclass=MetaCommander):
     version = '0.1'
     default_args = ['--help']
 
-    @option("--entitlements-plist", action="store_true", help="generate entitlements.plist")
-    @option("--config-json", action="store_true", help="generate sample config.json")
-    @option("appname", type=str, help="appname of standalone")
+
+    @option("--entitlements-plist", "-e", action="store_true", help="generate entitlements.plist")
+    @option("--config-json", "-c", action="store_true", help="generate sample config.json")
+    @option("--appname", type=str, default="app", help="appname of standalone")
     def do_generate(self, args):
         """generate standalone-related files."""
         gen = Generator(args.appname)
@@ -433,33 +431,46 @@ class Application(metaclass=MetaCommander):
         if args.entitlements_plist:
             gen.generate_entitlements()
 
+
     @option("--clean", "-c", action="store_true", help="clean app bundle before signing")
     @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
     @arg("path", type=str, help="path to standalone")
     def do_preprocess(self, args):
         """preprocess max standalone prior to codesigning."""
+        pre = PreProcessor(args.path, args.arch, args.clean)
+        pre.process()
+
 
     @option("--dry-run", action="store_true", help="run process without actually doing anything")
-    @option("--clean", "-c", action="store_true", help="clean app bundle before signing")
     @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
     @option("--entitlements", "-e", type=str, help="path to app-entitlements.plist")
     @option("dev_id", type=str, help="Developer ID Application: <dev_id>")
     @arg("path", type=str, help="path to standalone")
     def do_codesign(self, args):
         """codesign max standalone."""
+        sig = CodeSigner(args.path, args.dev_id, args.entitlements)
+        sig.process()
 
     @arg("path", type=str, help="path to package")
     def do_notarize(self, args):
         """notarize codesigned max standalone."""
+        notary = Notarizer(args.path, args.appleid, args.app_password, args.app_bundle_id, args.output_dir)
+        notary.process()
 
     @arg("path", type=str, help="path to zipped standalone")
     def do_staple(self, args):
         """staple notarized max standalone."""
+        st = Stapler(args.path)
+        st.process()
 
+    @option("--add-file", "-f", action="append", help="add a file to app distro package")
+    @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
+    @option("--version", "-v", type=str, help="path to app-entitlements.plist")
     @arg("path", type=str, help="path to directory")
     def do_package(self, args):
         """package max standalone for distribution."""
-
+        pkg = Packager(args.path, args.version, args.arch, args.add_file)
+        pkg.process()
 
     def cmdline(self):
         """commandline interface generator."""
