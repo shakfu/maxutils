@@ -1,0 +1,11 @@
+{
+  "standalone": "fx.app",
+  "app_version": "0.1.2",
+  "dev_id": "Bugs Bunny",
+  "appleid": "bugs.bunny@icloud.com",
+  "password": "xxxx-xxxx-xxxx-xxxx",
+  "bundle_id": "com.acme.fx",
+  "include": [
+    "README.md"
+  ]
+}

@@ -418,6 +418,7 @@ class Application(metaclass=MetaCommander):
     epilog = "workflow: generate -> preprocess -> codesign -> notarize -> staple -> package"
     version = '0.1'
     default_args = ['--help']
+    _argparse_subcmds = {}
 
 
     @option("--entitlements-plist", "-e", action="store_true", help="generate entitlements.plist")
