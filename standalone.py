@@ -127,8 +127,8 @@ class Generator(Base):
         - config.json
     """
     def __init__(self, path: str):
-        super().__init__()
         self.path = Path(path)
+        self.log = logging.getLogger(self.__class__.__name__)
 
     @property
     def appname(self):
@@ -161,10 +161,10 @@ class PreProcessor(Base):
     """
 
     def __init__(self, path: str, arch: str = "x86_64", pre_clean: bool = False):
-        super().__init__()
         self.path = Path(path)
         self.arch = arch
         self.pre_clean = pre_clean
+        self.log = logging.getLogger(self.__class__.__name__)
 
     def get_size(self, path=None) -> str:
         """get total size of target path"""
@@ -207,12 +207,12 @@ class CodeSigner(Base):
     """
 
     def __init__(self, path: str, dev_id: str, entitlements: str = None):
-        super().__init__()
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
         self.authority = f"Developer ID Application: {self.dev_id}"
         self._cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
+        self.log = logging.getLogger(self.__class__.__name__)
 
     @property
     def appname(self):
@@ -299,12 +299,12 @@ class Notarizer(Base):
         app_bundle_id: str,
         output_dir: str = "output",
     ):
-        super().__init__()
         self.path = Path(path)
         self.appleid = appleid
         self.app_password = app_password
         self.app_bundle_id = app_bundle_id
         self.output_dir = Path(output_dir)
+        self.log = logging.getLogger(self.__class__.__name__)
 
     def notarize(self):
         """notarize using altool (for xcode < 13)
@@ -339,6 +339,7 @@ class Stapler(Base):
 
     def __init__(self, path: str):
         self.path = path
+        self.log = logging.getLogger(self.__class__.__name__)
 
     def staple(self):
         """staple successful notarization to app.bundle"""
@@ -363,6 +364,7 @@ class Packager(Base):
         self.arch = arch
         self.extra_files = add_file
         self.timestamp = datetime.date.today().strftime("%y%m%d")
+        self.log = logging.getLogger(self.__class__.__name__)
 
     @property
     def appname(self):
@@ -488,8 +490,8 @@ class Application(metaclass=MetaCommander):
     @arg("path", type=str, help="path to zipped standalone")
     def do_staple(self, args):
         """staple notarized max standalone."""
-        st = Stapler(args.path)
-        st.process()
+        stplr = Stapler(args.path)
+        stplr.process()
 
     @option("--add-file", "-f", action="append", help="add a file to app distro package")
     @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
