@@ -4,14 +4,11 @@ This repo includes scripts (typically in python3 and for macOS) to help solve is
 
 The scripts are all written in straightforward pure python3 code without any dependencies outside of the python3 standard library.
 
-
 ## The scripts
 
 - [standalone.py](standalone.py): a cli utility intended to handle max standalone post-production tasks (cleaning, shrinking, fixes, codesigning, packaging, notarization).
 
-
 - [shrink.py](shrink.py): recursively 'thins' a folder of fat binaries by dropping uneeded architectures from binaries within the folder. This is not max specific and can be used in any macOS folder which contains fat binaries (even if they are deeply nested).
-
 
 ## standalone.py
 
@@ -23,12 +20,68 @@ It has the following current and planned features:
 - [x] shrinking: `ditto --arch <fat.app> <thin.app>`
 - [x] generate entitlements.plist
 - [x] codesigning app bundle
-- [ ] packaging to pkg, zip or dmg
-- [ ] codesigning installer
-- [ ] notarization
+- [x] packaging to pkg, zip or dmg
+- [x] codesigning installer
+- [x] notarization
+- [ ] stapling
+
+### overview
+
+A python class / cli tool to manage post-production tasks for a max/msp standalone.
+
+For a sense how it works, let's say my.app is in `~/tmp/my.app` and
+you just typed `cd ~/tmp`.
+
+#### The standalone.py step-by-step way
+
+`standalone.py codesign my.app "my_dev_id"`
+
+This codesigns all externals, bundles, frameworks + the runtime
+
+`standalone.py package my.app`
+
+This creates my.zip
+
+`standalone.py notarize --appleid=<appleid> -p <app_password> --bundle-id=<app_bundle_id> my.zip`
+
+Hopefully this notarizes my.zip and you receive an email with "Your Mac software has been succefully notarized..."
+
+`standalone.py staple my.zip`
+
+This will unzip my.zip and staple the uncompressed my.app, then optionally rezip it again.
+
+#### The standalone.py 'express' way
+
+```bash
+$ standalone.py express \
+    --dev_id=<dev_id> \
+    --appleid=<appleid> \
+    --password=<app_password> \
+    --bundle-id=com.acme.my \
+    my.app
+```
+
+Does every thing as above up to stapling so you have a notarized my.zip
+
+`standalone.py staple my.zip`
+
+#### The standalone 'standalone.json' way
+
+`standalone generate --config-json`
+
+This generates app.json, then fill it out
+
+`standalone.py express --config=app.json`
+
+Does every thing as above up to stapling so you have a notarized my.zip
+
+`standalone.py staple my.zip`
+
+### command line usage
 
 standalone.py's functions are provided via subcommands:
-```
+
+```bash
 usage: standalone.py [-h] [--verbose]  ...
 
 positional arguments:
@@ -45,7 +98,7 @@ optional arguments:
 
 The `codesign` subcommand is currently implemented:
 
-```
+```bash
 usage: standalone.py codesign [-h] [--entitlements ENTITLEMENTS] [--arch ARCH]
                               [--clean] [--dry-run]
                               path devid
@@ -65,11 +118,12 @@ optional arguments:
 
 For example:
 
+```bash
     ./standalone.py codesign --arch=x86_64  ./myapp.app "Sam Smith"
+```
 
 Will shrink the standalone and retain only the x86_64 architecture,
-then codesign it with the authority "Developer ID Application: Sam Smith" 
-using the default automatically generated myapp-entitlements.plist:
+then codesign it with the authority "Developer ID Application: Sam Smith" using the default automatically generated myapp-entitlements.plist:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>

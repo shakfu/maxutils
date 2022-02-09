@@ -1,42 +1,41 @@
 #!/usr/bin/env python3
 """standalone.py
 
-A python class / cli tool to manage post-production tasks for a max/msp standalone.
+A cli tool to manage post-production tasks for max standalones.
 
-For a sense how it works, let's say my.app is in `~/tmp/my.app` and 
-you just typed `cd ~/tmp`.
+- [x] cleaning: `xattr -cr PATH/TO/YOUR-APP-NAME.app`
+- [x] shrinking: `ditto --arch <fat.app> <thin.app>`
+- [x] generate entitlements.plist
+- [x] codesigning app bundle
+- [x] packaging to pkg, zip or dmg
+- [x] codesigning installer
+- [x] notarization
+- [ ] stapling
 
-A. The standalone.py step-by-step way
+rootdir:
+    
+    Max8
+        save standalone -> a.app
 
-1. standalone.py codesign my.app "my_dev_id"
--> This codesigns all externals, bundles, frameworks + the runtime
-2. standalone.py package my.app
--> This creates my.zip
-3. standalone.py notarize --appleid=<appleid> -p <app_password> --bundle-id=<app_bundle_id> my.zip
--> Hopefully this notarizes my.zip and you receive an email with
-   "Your Mac software has been succefully notarized..."
-4. standalone.py staple my.zip
--> This will unzip my.zip and staple the uncompressed my.app, then optionally rezip it again.
--> DONE.
+    standalone.py
 
-B. The standalone.py 'express' way
+        a.app -> codesign -> a-signed.app
 
-1. standalone.py express \
-    --dev_id=<dev_id> \
-    --appleid=<appleid> \
-    --password=<app_password> \
-    --bundle-id=com.acme.my \
-    my.app
--> Does every thing as above up to stapling so you have a notarized my.zip
-2. standalone.py staple my.zip
+        a-signed.app -> package -> a-signed.zip
 
-C. The standalone 'standalone.json' way
+        a-signed.zip -> notarize -> a-notarized.zip
 
-1. standalone generate --gen-config
--> This generates app.json, then fill it out
-2. standalone.py express --config=app.json
--> Does every thing as above up to stapling so you have a notarized my.zip
-3. standalone.py staple my.zip
+        a-notarized.zip -> unzip (to output_dir)
+
+output_dir:
+    standalone.py
+        a-notarized.app -> staple -> a-stapled.app
+
+        cp extras (README.md, etc..) to output_dir
+
+rootdir:
+    standalone.py
+        output_dir -> repackage -> a-complete.zip
 
 """
 import argparse
@@ -69,13 +68,13 @@ logging.basicConfig(
 
 CONFIG = {
     "standalone": "fx.app",
-    "dev-id": "Bugs Bunny",
+    "app_version": "0.1.2",
+    "dev_id": "Bugs Bunny",
     "appleid": "bugs.bunny@icloud.com",
-    "password":"xxxx-xxxx-xxxx-xxxx",
-    "bundle-id": "com.acme.fx",
-    "include": ["README.md"]
+    "password": "xxxx-xxxx-xxxx-xxxx",
+    "bundle_id": "com.acme.fx",
+    "include": ["README.md"],
 }
-
 
 ENTITLEMENTS = {
     "com.apple.security.automation.apple-events": True,
@@ -96,15 +95,18 @@ ENTITLEMENTS = {
 
 
 class MaxStandalone:
-    """Manage post-production tasks for Max standalones.
-    """
+    """Manage post-production tasks for Max standalones."""
 
     def __init__(
         self,
         path: str,
         dev_id: str = None,
         entitlements: str = None,
-        output_dir: str = None,
+        output_dir: str = "output",
+        appleid: str = None,
+        app_version: str = None,
+        app_password: str = None,
+        app_bundle_id: str = None,
         pre_clean=False,
         arch=None,
         dry_run=False,
@@ -112,7 +114,11 @@ class MaxStandalone:
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
-        self.output_dir = output_dir or self.path.parent / 'output'
+        self.output_dir = Path(output_dir)
+        self.appleid = appleid
+        self.app_version = app_version
+        self.app_password = app_password
+        self.app_bundle_id = app_bundle_id
         self.pre_clean = pre_clean
         self.arch = arch or "dual"
         self.dry_run = dry_run
@@ -135,9 +141,7 @@ class MaxStandalone:
     @property
     def cmd_codesign(self):
         """common prefix for group codesigning"""
-        return [
-            "codesign", "-s", self.authority, "--timestamp", "--deep"
-        ]
+        return ["codesign", "-s", self.authority, "--timestamp", "--deep"]
 
     @property
     def app_path(self):
@@ -147,17 +151,8 @@ class MaxStandalone:
     @property
     def zip_path(self):
         """output zip path"""
-        return self.output_dir / self.path.stem + '.zip'
-
-    @property
-    def staple_zip_path(self):
-        """path to zipped archive in staple_dir"""
-        return self.staple_dir / self.path.stem + '.zip'
-
-    @property
-    def staple_app_path(self):
-        """path to app in staple_dir"""
-        return self.staple_dir / self.path.name
+        zipped = self.path.stem + ".zip"
+        return self.output_dir / zipped
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
@@ -192,7 +187,7 @@ class MaxStandalone:
         """generates a default enttitelements.plist file"""
         if not path:
             path = f"{self.appname}-entitlements.plist"
-        with open(path, 'wb') as fopen:
+        with open(path, "wb") as fopen:
             plistlib.dump(ENTITLEMENTS, fopen)
         return path
 
@@ -200,7 +195,7 @@ class MaxStandalone:
         """generates a default entitlements.plist file"""
         if not path:
             path = f"{self.appname}.json"
-        with open(path, 'w') as fopen:
+        with open(path, "w") as fopen:
             json.dump(CONFIG, fopen, indent=2)
         return path
 
@@ -208,10 +203,12 @@ class MaxStandalone:
         """used to collect and codesign items in a bundle subpath"""
         resources = []
         for ext in ["mxo", "framework", "dylib", "bundle"]:
-            resources.extend([
-                i for i in self.path.glob(glob_subpath.format(ext=ext))
-                if not i.is_symlink()
-            ])
+            resources.extend(
+                [
+                    i for i in self.path.glob(glob_subpath.format(ext=ext))
+                    if not i.is_symlink()
+                ]
+            )
 
         self.log.info("%s : %s found", category, len(resources))
 
@@ -223,7 +220,7 @@ class MaxStandalone:
                     self.cmd_codesign + ["-f", resource],
                     capture_output=True,
                     encoding="utf8",
-                    check=True
+                    check=True,
                 )
                 if res.returncode != 0:
                     self.log.critical(res.stderr)
@@ -233,16 +230,17 @@ class MaxStandalone:
         self.log.info("signing runtime: %s", self.path)
         if not self.dry_run:
             res = subprocess.run(
-                self.cmd_codesign + [
+                self.cmd_codesign
+                + [
                     "--options",
                     "runtime",
                     "--entitlements",
-                    self.entitlements,
-                    self.path,
+                    str(self.entitlements),
+                    str(self.path),
                 ],
                 capture_output=True,
                 encoding="utf8",
-                check=True
+                check=True,
             )
             if res.returncode != 0:
                 self.log.critical(res.stderr)
@@ -281,26 +279,36 @@ class MaxStandalone:
 
     def notarize(self):
         """notarize using altool for xcode < 13
-        
+
         Does the equivalent of:
 
         xcrun altool --notarize-app -f app.zip -t osx -u "sam.smith@gmail.com" -p xxxx-xxxx-xxxx-xxxx -primary-bundle-id com.atari.pacman
         """
-        self.cmd(f'xcrun altool --notarize-app -f {self.zip_path} -t osx -u {self.appleid} -p {self.app_password} -primary-bundle-id {self.app_bundle_id}')
+        self.cmd(
+            f"xcrun altool --notarize-app -f {self.zip_path} -t osx -u {self.appleid} -p {self.app_password} -primary-bundle-id {self.app_bundle_id}"
+        )
+
+    def unzip_notarized(self):
+        """unzip notarized to output_dir"""
+        self.output_dir.mkdir(exist_ok=True)
+        self.cmd(f"unzip -d '{self.output_dir}' '{self.zip_path}'")
 
     def staple(self):
-        """staple successful notarization to app.bundle, zip archive"""
-        self.cmd(f"mkdir {self.staple_dir}")
-        self.cmd(f"unzip -d '{self.staple_dir}' '{self.zip_path}'")
-        self.cmd(f"xcrun stapler staple -v {self.staple_app_path}")
-        self.cmd(f"ditto -c -k --keepParent {self.staple_app_path} {self.staple_zip_path}")
+        """staple successful notarization to app.bundle"""
+        self.cmd(f"xcrun stapler staple -v {self.path}")
+
+    def repackage(self):
+        """repackage, rezip stapled app.bundle with other related files."""
+        self.cmd(
+            f"ditto -c -k --keepParent {self.output_dir} {self.appname}-{self.app_version}-{self.arch}.zip"
+        )
 
     def process(self):
         """complete process"""
         self.codesign()
         self.package()
         self.notarize()
-        #self.staple()
+        # self.staple()
 
     @classmethod
     def cmdline(cls):
@@ -322,15 +330,16 @@ class MaxStandalone:
         # ---------------------------------------------------------------------
         # subcommands
 
-        subparsers = parser.add_subparsers(help="sub-command help",
-                                           dest="command",
-                                           metavar="")
+        subparsers = parser.add_subparsers(
+            help="sub-command help", dest="command", metavar=""
+        )
 
         # ---------------------------------------------------------------------
-        # generate subcommand 
+        # generate subcommand
 
         option_generate = subparsers.add_parser(
-            "generate", help="generate standalone-related files").add_argument
+            "generate", help="generate standalone-related files"
+        ).add_argument
         option_generate("path", type=str, help="path to standalone")
         option_generate(
             "--entitlements-plist",
@@ -344,14 +353,13 @@ class MaxStandalone:
         )
 
         # ---------------------------------------------------------------------
-        # codesign subcommand 
+        # codesign subcommand
 
         option_codesign = subparsers.add_parser(
-            "codesign", help="codesign standalone").add_argument
+            "codesign", help="codesign standalone"
+        ).add_argument
         option_codesign("path", type=str, help="path to standalone")
-        option_codesign("dev_id",
-                        type=str,
-                        help="Developer ID Application: <dev_id>")
+        option_codesign("dev_id", type=str, help="Developer ID Application: <dev_id>")
         option_codesign(
             "--entitlements",
             "-e",
@@ -364,10 +372,9 @@ class MaxStandalone:
             default="dual",
             help="set architecture of app (dual|arm64|x86_64)",
         )
-        option_codesign("--clean",
-                        "-c",
-                        action="store_true",
-                        help="clean app bundle before signing")
+        option_codesign(
+            "--clean", "-c", action="store_true", help="clean app bundle before signing"
+        )
         option_codesign(
             "--dry-run",
             action="store_true",
@@ -375,16 +382,18 @@ class MaxStandalone:
         )
 
         # ---------------------------------------------------------------------
-        # package subcommand 
+        # package subcommand
         option_package = subparsers.add_parser(
-            "package", help="package standalone").add_argument
+            "package", help="package standalone"
+        ).add_argument
         option_package("path", type=str, help="path to standalone")
 
         # ---------------------------------------------------------------------
         # notarize subcommand
 
         option_notarize = subparsers.add_parser(
-            "notarize", help="notarize packaged standalone").add_argument
+            "notarize", help="notarize packaged standalone"
+        ).add_argument
         option_notarize("path", type=str, help="path to package")
 
         # ---------------------------------------------------------------------
@@ -393,13 +402,13 @@ class MaxStandalone:
         args = parser.parse_args()
         print(args)
 
-        if args.command == 'generate' and args.path and args.entitlements_plist:
+        if args.command == "generate" and args.path and args.entitlements_plist:
             cls(args.path).generate_entitlements()
 
-        if args.command == 'generate' and args.path and args.config_json:
+        if args.command == "generate" and args.path and args.config_json:
             cls(args.path).generate_config()
 
-        elif args.command == 'codesign' and args.path and args.dev_id:
+        elif args.command == "codesign" and args.path and args.dev_id:
             cls(
                 args.path,
                 args.dev_id,
