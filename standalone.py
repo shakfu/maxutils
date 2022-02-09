@@ -10,40 +10,36 @@ A cli tool to manage post-production tasks for max standalones.
 - [x] packaging to pkg, zip or dmg
 - [x] codesigning installer
 - [x] notarization
-- [ ] stapling
+- [x] stapling
 
 rootdir:
-    
     Max8
         save standalone -> a.app
 
     standalone.py
-
         a.app -> codesign -> a-signed.app
-
-        a-signed.app -> package -> a-signed.zip
+        a-signed.app -> codesign -> a-signed.zip
 
         a-signed.zip -> notarize -> a-notarized.zip
-
-        a-notarized.zip -> unzip (to output_dir)
+        a-notarized.zip -> notarize -> unzip (to output_dir)
 
 output_dir:
     standalone.py
         a-notarized.app -> staple -> a-stapled.app
-
         cp extras (README.md, etc..) to output_dir
 
 rootdir:
     standalone.py
-        output_dir -> repackage -> a-complete.zip
-
+        output_dir -> package -> a-complete.zip
 """
 import argparse
+import datetime
 import logging
 import os
 import plistlib
 import subprocess
 import json
+import sys
 from pathlib import Path
 
 try:
@@ -91,78 +87,69 @@ ENTITLEMENTS = {
 # UTILITY FUNCTIONS
 
 # ----------------------------------------------------------------------------
-# MAIN CLASS
+# CLASSES
 
-
-class MaxStandalone:
-    """Manage post-production tasks for Max standalones."""
-
-    def __init__(
-        self,
-        path: str,
-        dev_id: str = None,
-        entitlements: str = None,
-        output_dir: str = "output",
-        appleid: str = None,
-        app_version: str = None,
-        app_password: str = None,
-        app_bundle_id: str = None,
-        pre_clean=False,
-        arch=None,
-        dry_run=False,
-    ):
-        self.path = Path(path)
-        self.dev_id = dev_id
-        self.entitlements = entitlements
-        self.output_dir = Path(output_dir)
-        self.appleid = appleid
-        self.app_version = app_version
-        self.app_password = app_password
-        self.app_bundle_id = app_bundle_id
-        self.pre_clean = pre_clean
-        self.arch = arch or "dual"
-        self.dry_run = dry_run
-
+class Base:
+    def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
-
-    @property
-    def authority(self):
-        """authority string required by codesigning"""
-        if self.dev_id:
-            return f"Developer ID Application: {self.dev_id}"
-        self.log.critical("Developer ID not set (dev_id)")
-        raise ValueError
-
-    @property
-    def appname(self):
-        """derives lower-case app name from standalone name <appname>.app"""
-        return self.path.stem.lower()
-
-    @property
-    def cmd_codesign(self):
-        """common prefix for group codesigning"""
-        return ["codesign", "-s", self.authority, "--timestamp", "--deep"]
-
-    @property
-    def app_path(self):
-        """output app path"""
-        return self.output_dir / self.path.name
-
-    @property
-    def zip_path(self):
-        """output zip path"""
-        zipped = self.path.stem + ".zip"
-        return self.output_dir / zipped
+    
+    def __repr__(self):
+        return f"<{self.__class__.__name__}>"
 
     def cmd(self, shellcmd, *args, **kwds):
-        """run system command"""
+        """run system command."""
         syscmd = shellcmd.format(*args, **kwds)
         self.log.debug(syscmd)
         os.system(syscmd)
 
     def cmd_output(self, arglist) -> str:
         """capture and return shell cmd output."""
-        return subprocess.check_output(arglist).decode("utf8")
+        return subprocess.check_output(arglist, encoding="utf8")
+
+    def copy(self, src_path: str, dst_path: str):
+        """recursively copy from src path to dst path."""
+        self.log.info("copying: %s to %s", src_path, dst_path)
+        self.cmd(f"ditto '{src_path}' '{dst_path}'")
+
+    def zip(self, src_path: Path, dst_path: Path):
+        """create a zip archive of src path at dst path."""
+        self.cmd(
+            f"ditto -c -k --keepParent '{src_path}' '{dst_path}'")
+
+
+class Generator(Base):
+    def __init__(self, path: str):
+        super().__init__()
+        self.path = Path(path)
+
+    @property
+    def appname(self):
+        """derives lower-case app name from standalone name <appname>.app"""
+        return self.path.stem.lower()
+
+    def generate_entitlements(self, path=None) -> str:
+        """generates a default enttitelements.plist file"""
+        if not path:
+            path = f"{self.appname}-entitlements.plist"
+        with open(path, "wb") as fopen:
+            plistlib.dump(ENTITLEMENTS, fopen)
+        return path
+
+    def generate_config(self, path=None) -> str:
+        """generates a default entitlements.plist file"""
+        if not path:
+            path = f"{self.appname}.json"
+        with open(path, "w") as fopen:
+            json.dump(CONFIG, fopen, indent=2)
+        return path
+
+
+class PreProcessor(Base):
+    def __init__(self, path: str, arch: str = "x86_64", pre_clean: bool = False):
+        super().__init__()
+        self.path = Path(path)
+        self.arch = arch
+        self.pre_clean = pre_clean
 
     def get_size(self, path=None) -> str:
         """get total size of target path"""
@@ -183,29 +170,53 @@ class MaxStandalone:
         self.cmd(f"rm -rf '{self.path}'")
         self.cmd(f"mv '{tmp}' '{self.path}'")
 
-    def generate_entitlements(self, path=None) -> str:
-        """generates a default enttitelements.plist file"""
-        if not path:
-            path = f"{self.appname}-entitlements.plist"
-        with open(path, "wb") as fopen:
-            plistlib.dump(ENTITLEMENTS, fopen)
-        return path
+    def process(self):
+        """main class process"""
+        if self.pre_clean:
+            self.log.info("cleaning app bundle")
+            self.clean()
+        if self.arch != "dual":
+            initial_size = self.get_size()
+            self.log.info("shrinking to %s", self.arch)
+            self.shrink()
+            self.log.info("BEFORE: %s", initial_size)
+            self.log.info("AFTER:  %s", self.get_size())
 
-    def generate_config(self, path=None) -> str:
-        """generates a default entitlements.plist file"""
-        if not path:
-            path = f"{self.appname}.json"
-        with open(path, "w") as fopen:
-            json.dump(CONFIG, fopen, indent=2)
-        return path
 
-    def sign_group(self, category, glob_subpath):
+class CodeSigner(Base):
+    """standalone codesigning class
+            
+    operations:
+        a.app -> codesign -> a-signed.app
+        a-signed.app -> codesign -> a-signed.zip
+    """
+    def __init__(self, path: str, dev_id: str, entitlements: str = None, dry_run: bool = False):
+        super().__init__()
+        self.path = Path(path)
+        self.dev_id = dev_id
+        self.entitlements = entitlements
+        self.dry_run = dry_run
+        self.authority = f"Developer ID Application: {self.dev_id}"
+        self._cmd_codesign = ["codesign", "-s",
+                              self.authority, "--timestamp", "--deep"]
+
+    @property
+    def appname(self):
+        """derives lower-case app name from standalone name <appname>.app"""
+        return self.path.stem.lower()
+
+    @property
+    def zip_path(self):
+        """zip path"""
+        return self.path.parent / f"{self.path.stem}.zip"
+
+    def sign_group(self, category, subpath):
         """used to collect and codesign items in a bundle subpath"""
         resources = []
         for ext in ["mxo", "framework", "dylib", "bundle"]:
             resources.extend(
                 [
-                    i for i in self.path.glob(glob_subpath.format(ext=ext))
+                    i for i in self.path.glob(subpath.format(ext=ext))
                     if not i.is_symlink()
                 ]
             )
@@ -217,7 +228,7 @@ class MaxStandalone:
                 self.log.info("%s: %s", category, resource)
             if not self.dry_run:
                 res = subprocess.run(
-                    self.cmd_codesign + ["-f", resource],
+                    self._cmd_codesign + ["-f", resource],
                     capture_output=True,
                     encoding="utf8",
                     check=True,
@@ -230,7 +241,7 @@ class MaxStandalone:
         self.log.info("signing runtime: %s", self.path)
         if not self.dry_run:
             res = subprocess.run(
-                self.cmd_codesign
+                self._cmd_codesign
                 + [
                     "--options",
                     "runtime",
@@ -245,180 +256,250 @@ class MaxStandalone:
             if res.returncode != 0:
                 self.log.critical(res.stderr)
 
-    def codesign(self):
+    def process(self):
         """codesign standalone app bundle"""
-        if self.pre_clean:
-            self.log.info("cleaning app bundle")
-            self.clean()
-        if self.arch != "dual":
-            initial_size = self.get_size()
-            self.log.info("shrinking to %s", self.arch)
-            self.shrink()
-            self.log.info("BEFORE: %s", initial_size)
-            self.log.info("AFTER:  %s", self.get_size())
         if not self.entitlements:
-            self.entitlements = self.generate_entitlements()
+            gen = Generator(self.appname)
+            self.entitlements = gen.generate_entitlements()
         self.entitlements = Path(self.entitlements).absolute()
         self.sign_group("externals", "Contents/Resources/C74/**/*.{ext}")
         self.sign_group("frameworks", "Contents/Frameworks/**/*.{ext}")
         self.sign_runtime()
-        self.log.info("DONE")
+        self.log.info("codesigning DONE")
+        self.log.info("zipping signed {self.path} for notarization")
+        self.zip(self.path, self.zip_path)
 
-    def copy(self):
-        """recursively copies codesigned bundle to output directory"""
-        self.log.info("copying: %s to %s", self.path, self.app_path)
-        self.cmd(f"ditto '{self.path}' '{self.app_path}'")
 
-    def zip(self):
-        """create a zip archive suitable for notarization."""
-        self.cmd(f"ditto -c -k --keepParent '{self.app_path}' '{self.zip_path}'")
+class Notarizer(Base):
+    """standalone notarizing class
 
-    def package(self):
-        """package a signed app bundle for notarization."""
-        self.zip()
+    operations:
+        a-signed.zip -> notarize -> a-notarized.zip
+        a-notarized.zip -> notarize -> unzip (to output_dir)
+    """
+    def __init__(self, path: str, appleid: str, app_password: str, app_bundle_id: str, output_dir: str = 'output'):
+        super().__init__()
+        self.path = Path(path)
+        self.appleid = appleid
+        self.app_password = app_password
+        self.app_bundle_id = app_bundle_id
+        self.output_dir = Path(output_dir)
 
     def notarize(self):
-        """notarize using altool for xcode < 13
-
-        Does the equivalent of:
+        """notarize using altool (for xcode < 13)
 
         xcrun altool --notarize-app -f app.zip -t osx -u "sam.smith@gmail.com" -p xxxx-xxxx-xxxx-xxxx -primary-bundle-id com.atari.pacman
         """
+        self.log.info("notarizing %s", self.path)
         self.cmd(
-            f"xcrun altool --notarize-app -f {self.zip_path} -t osx -u {self.appleid} -p {self.app_password} -primary-bundle-id {self.app_bundle_id}"
+            f"xcrun altool --notarize-app -f {self.path} -t osx -u {self.appleid} -p {self.app_password} -primary-bundle-id {self.app_bundle_id}"
         )
 
     def unzip_notarized(self):
         """unzip notarized to output_dir"""
+        self.log.info("unzipping to %s notarized %s", self.output_dir, self.path)
         self.output_dir.mkdir(exist_ok=True)
-        self.cmd(f"unzip -d '{self.output_dir}' '{self.zip_path}'")
+        self.cmd(f"unzip -d '{self.output_dir}' '{self.path}'")
+
+    def process(self):
+        """notarize zipped standalone.app"""
+        self.notarize()
+        self.unzip_notarized()
+
+
+
+class Stapler(Base):
+    """standalone stapler class
+
+    operates in output_dir.
+    operations:
+        a-notarized.app -> staple -> a-stapled.app
+        cp extras (README.md, etc..) to output_dir
+    """
+    def __init__(self, path):
+        self.path = path
 
     def staple(self):
         """staple successful notarization to app.bundle"""
+        self.log.info("stapling %s", self.path)
         self.cmd(f"xcrun stapler staple -v {self.path}")
+
+    def process(self):
+        """stapling process"""
+        self.staple()
+
+
+
+class Packager(Base):
+    """standalone packager for distribution
+
+    operations:
+        output_dir -> package -> a-complete.zip
+    """
+
+    def __init__(self, path, version: str, arch: str, extra_files: list[str] = None):
+        self.path = path
+        self.version = version
+        self.arch = arch
+        self.extra_files = extra_files
+        self.timestamp = datetime.date.today().strftime("%y%m%d")
+
+    @property
+    def appname(self):
+        """derives lower-case app name from standalone name <appname>.app"""
+        return self.path.stem.lower()
 
     def repackage(self):
         """repackage, rezip stapled app.bundle with other related files."""
         self.cmd(
-            f"ditto -c -k --keepParent {self.output_dir} {self.appname}-{self.app_version}-{self.arch}.zip"
+            f"ditto -c -k --keepParent {self.path} {self.appname}-{self.version}-{self.arch}.zip"
         )
 
     def process(self):
-        """complete process"""
-        self.codesign()
-        self.package()
-        self.notarize()
-        # self.staple()
+        """final codesigned, notarized standalone packaging process."""
+        self.repackage()
 
-    @classmethod
-    def cmdline(cls):
-        """commandline interface to class."""
-        parser = argparse.ArgumentParser(description=cls.__doc__)
 
-        # ---------------------------------------------------------------------
-        # common options
+# ------------------------------------------------------------------------------
+# Generic utility functions and classes for commandline ops
 
-        option = parser.add_argument
-        option(
-            "--verbose",
-            "-v",
-            action="store_true",
-            help="increase log verbosity",
+
+# option decorator
+def option(*args, **kwds):
+    def _decorator(func):
+        _option = (args, kwds)
+        if hasattr(func, 'options'):
+            func.options.append(_option)
+        else:
+            func.options = [_option]
+        return func
+    return _decorator
+
+
+# arg decorator
+arg = option
+
+# combines option decorators
+
+
+def option_group(*options):
+    def _decorator(func):
+        for option in options:
+            func = option(func)
+        return func
+    return _decorator
+
+
+class MetaCommander(type):
+    """commandline metaclass"""
+    def __new__(cls, classname, bases, classdict):
+        subcmds = {}
+        for name, func in list(classdict.items()):
+            if name.startswith('do_'):
+                name = name[3:]
+                subcmd = {
+                    'name': name,
+                    'func': func,
+                    'options': [],
+                }
+                if hasattr(func, 'options'):
+                    subcmd['options'] = func.options
+                subcmds[name] = subcmd
+        classdict['_argparse_subcmds'] = subcmds
+        return type.__new__(cls, classname, bases, classdict)
+
+
+# ------------------------------------------------------------------------------
+# Commandline interface
+
+
+class Application(metaclass=MetaCommander):
+    """standalone: manage post-production tasks for Max standalones.
+
+    """
+    name = 'standalone'
+    epilog = "workflow: generate -> preprocess -> codesign -> notarize -> staple -> package"
+    version = '0.1'
+    default_args = ['--help']
+
+    @option("--entitlements-plist", action="store_true", help="generate entitlements.plist")
+    @option("--config-json", action="store_true", help="generate sample config.json")
+    @option("appname", type=str, help="appname of standalone")
+    def do_generate(self, args):
+        """generate standalone-related files."""
+        gen = Generator(args.appname)
+        if args.config_json:
+            gen.generate_config()
+        if args.entitlements_plist:
+            gen.generate_entitlements()
+
+    @option("--clean", "-c", action="store_true", help="clean app bundle before signing")
+    @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
+    @arg("path", type=str, help="path to standalone")
+    def do_preprocess(self, args):
+        """preprocess max standalone prior to codesigning."""
+
+    @option("--dry-run", action="store_true", help="run process without actually doing anything")
+    @option("--clean", "-c", action="store_true", help="clean app bundle before signing")
+    @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
+    @option("--entitlements", "-e", type=str, help="path to app-entitlements.plist")
+    @option("dev_id", type=str, help="Developer ID Application: <dev_id>")
+    @arg("path", type=str, help="path to standalone")
+    def do_codesign(self, args):
+        """codesign max standalone."""
+
+    @arg("path", type=str, help="path to package")
+    def do_notarize(self, args):
+        """notarize codesigned max standalone."""
+
+    @arg("path", type=str, help="path to zipped standalone")
+    def do_staple(self, args):
+        """staple notarized max standalone."""
+
+    @arg("path", type=str, help="path to directory")
+    def do_package(self, args):
+        """package max standalone for distribution."""
+
+
+    def cmdline(self):
+        """commandline interface generator."""
+        parser = argparse.ArgumentParser(
+            # prog = self.name,
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description=self.__doc__,
+            epilog=self.epilog,
         )
-        option("--output_dir", "-o", help="set output directory")
 
-        # ---------------------------------------------------------------------
-        # subcommands
+        parser.add_argument('-v', '--version', action='version',
+                            version='%(prog)s ' + self.version)
+
+        ## default arg
+        # parser.add_argument('--verbose', '-v', help='increase verbosity')
+
+        # non-subcommands here
 
         subparsers = parser.add_subparsers(
-            help="sub-command help", dest="command", metavar=""
+            title='subcommands',
+            description='valid subcommands',
+            help='additional help',
+            metavar="",
         )
 
-        # ---------------------------------------------------------------------
-        # generate subcommand
+        for name in sorted(self._argparse_subcmds.keys()):
+            subcmd = self._argparse_subcmds[name]
+            subparser = subparsers.add_parser(subcmd['name'],
+                                              help=subcmd['func'].__doc__)
+            for args, kwds in subcmd['options']:
+                subparser.add_argument(*args, **kwds)
+            subparser.set_defaults(func=subcmd['func'])
 
-        option_generate = subparsers.add_parser(
-            "generate", help="generate standalone-related files"
-        ).add_argument
-        option_generate("path", type=str, help="path to standalone")
-        option_generate(
-            "--entitlements-plist",
-            action="store_true",
-            help="generate sample app entitlements.plist",
-        )
-        option_generate(
-            "--config-json",
-            action="store_true",
-            help="generate sample config.json",
-        )
-
-        # ---------------------------------------------------------------------
-        # codesign subcommand
-
-        option_codesign = subparsers.add_parser(
-            "codesign", help="codesign standalone"
-        ).add_argument
-        option_codesign("path", type=str, help="path to standalone")
-        option_codesign("dev_id", type=str, help="Developer ID Application: <dev_id>")
-        option_codesign(
-            "--entitlements",
-            "-e",
-            type=str,
-            help="path to app-entitlements.plist",
-        )
-        option_codesign(
-            "--arch",
-            "-a",
-            default="dual",
-            help="set architecture of app (dual|arm64|x86_64)",
-        )
-        option_codesign(
-            "--clean", "-c", action="store_true", help="clean app bundle before signing"
-        )
-        option_codesign(
-            "--dry-run",
-            action="store_true",
-            help="run process without actually doing anything",
-        )
-
-        # ---------------------------------------------------------------------
-        # package subcommand
-        option_package = subparsers.add_parser(
-            "package", help="package standalone"
-        ).add_argument
-        option_package("path", type=str, help="path to standalone")
-
-        # ---------------------------------------------------------------------
-        # notarize subcommand
-
-        option_notarize = subparsers.add_parser(
-            "notarize", help="notarize packaged standalone"
-        ).add_argument
-        option_notarize("path", type=str, help="path to package")
-
-        # ---------------------------------------------------------------------
-        # parse arguments
-
-        args = parser.parse_args()
-        print(args)
-
-        if args.command == "generate" and args.path and args.entitlements_plist:
-            cls(args.path).generate_entitlements()
-
-        if args.command == "generate" and args.path and args.config_json:
-            cls(args.path).generate_config()
-
-        elif args.command == "codesign" and args.path and args.dev_id:
-            cls(
-                args.path,
-                args.dev_id,
-                args.entitlements,
-                args.output_dir,
-                args.clean,
-                args.arch,
-                args.dry_run,
-            ).codesign()
+        if len(sys.argv) <= 1:
+            options = parser.parse_args(self.default_args)
+        else:
+            options = parser.parse_args()
+        options.func(self, options)
 
 
-if __name__ == "__main__":
-    MaxStandalone.cmdline()
+if __name__ == '__main__':
+    app = Application()
+    app.cmdline()
