@@ -42,7 +42,8 @@ class Shrink:
             assert arch_to_keep in self.ARCHES
             self.arch = arch_to_keep
         except AssertionError:
-            self.log.critical(f"{keep_arch} not accepted. Must be one of {self.ARCHES}")
+            self.log.critical(
+                f"{arch_to_keep} not accepted. Must be one of {self.ARCHES}")
             sys.exit(1)
 
         self.arch = arch_to_keep
@@ -59,8 +60,7 @@ class Shrink:
 
     def get_size(self):
         """get total size of target path"""
-        txt = self.cmd_output(["du", "-s", "-h", self.path]).strip()
-        return txt
+        return self.cmd_output(["du", "-s", "-h", self.path]).strip()
 
     def remove_arch(self):
         """removes arch from fat binary"""

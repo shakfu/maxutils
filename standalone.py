@@ -89,10 +89,13 @@ ENTITLEMENTS = {
 # ----------------------------------------------------------------------------
 # CLASSES
 
+
 class Base:
+    """helper mixin class
+    """
     def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
-    
+
     def __repr__(self):
         return f"<{self.__class__.__name__}>"
 
@@ -113,11 +116,16 @@ class Base:
 
     def zip(self, src_path: Path, dst_path: Path):
         """create a zip archive of src path at dst path."""
-        self.cmd(
-            f"ditto -c -k --keepParent '{src_path}' '{dst_path}'")
+        self.cmd(f"ditto -c -k --keepParent '{src_path}' '{dst_path}'")
 
 
 class Generator(Base):
+    """standalone generator class
+
+    Generates sample configuration files:
+        - entitlements.plist
+        - config.json
+    """
     def __init__(self, path: str):
         super().__init__()
         self.path = Path(path)
@@ -145,6 +153,13 @@ class Generator(Base):
 
 
 class PreProcessor(Base):
+    """standalone preprocessor class
+
+    operations:
+        - shrinking: fat binaries to reduce size
+        - clean: remove detritus via xattr
+    """
+
     def __init__(self, path: str, arch: str = "x86_64", pre_clean: bool = False):
         super().__init__()
         self.path = Path(path)
@@ -185,19 +200,19 @@ class PreProcessor(Base):
 
 class CodeSigner(Base):
     """standalone codesigning class
-            
+
     operations:
         a.app -> codesign -> a-signed.app
         a-signed.app -> codesign -> a-signed.zip
     """
+
     def __init__(self, path: str, dev_id: str, entitlements: str = None):
         super().__init__()
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
         self.authority = f"Developer ID Application: {self.dev_id}"
-        self._cmd_codesign = ["codesign", "-s",
-                              self.authority, "--timestamp", "--deep"]
+        self._cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
 
     @property
     def appname(self):
@@ -215,7 +230,8 @@ class CodeSigner(Base):
         for ext in ["mxo", "framework", "dylib", "bundle"]:
             resources.extend(
                 [
-                    i for i in self.path.glob(subpath.format(ext=ext))
+                    i
+                    for i in self.path.glob(subpath.format(ext=ext))
                     if not i.is_symlink()
                 ]
             )
@@ -274,7 +290,15 @@ class Notarizer(Base):
         a-signed.zip -> notarize -> a-notarized.zip
         a-notarized.zip -> notarize -> unzip (to output_dir)
     """
-    def __init__(self, path: str, appleid: str, app_password: str, app_bundle_id: str, output_dir: str = 'output'):
+
+    def __init__(
+        self,
+        path: str,
+        appleid: str,
+        app_password: str,
+        app_bundle_id: str,
+        output_dir: str = "output",
+    ):
         super().__init__()
         self.path = Path(path)
         self.appleid = appleid
@@ -304,7 +328,6 @@ class Notarizer(Base):
         self.unzip_notarized()
 
 
-
 class Stapler(Base):
     """standalone stapler class
 
@@ -313,6 +336,7 @@ class Stapler(Base):
         a-notarized.app -> staple -> a-stapled.app
         cp extras (README.md, etc..) to output_dir
     """
+
     def __init__(self, path: str):
         self.path = path
 
@@ -324,7 +348,6 @@ class Stapler(Base):
     def process(self):
         """stapling process"""
         self.staple()
-
 
 
 class Packager(Base):
@@ -365,11 +388,12 @@ class Packager(Base):
 def option(*args, **kwds):
     def _decorator(func):
         _option = (args, kwds)
-        if hasattr(func, 'options'):
+        if hasattr(func, "options"):
             func.options.append(_option)
         else:
             func.options = [_option]
         return func
+
     return _decorator
 
 
@@ -384,31 +408,34 @@ def option_group(*options):
         for option in options:
             func = option(func)
         return func
+
     return _decorator
 
 
 class MetaCommander(type):
     """commandline metaclass"""
+
     def __new__(cls, classname, bases, classdict):
         subcmds = {}
         for name, func in list(classdict.items()):
-            if name.startswith('do_'):
+            if name.startswith("do_"):
                 name = name[3:]
                 subcmd = {
-                    'name': name,
-                    'func': func,
-                    'options': [],
+                    "name": name,
+                    "func": func,
+                    "options": [],
                 }
-                if hasattr(func, 'options'):
-                    subcmd['options'] = func.options
+                if hasattr(func, "options"):
+                    subcmd["options"] = func.options
                 subcmds[name] = subcmd
-        classdict['_argparse_subcmds'] = subcmds
+        classdict["_argparse_subcmds"] = subcmds
         return type.__new__(cls, classname, bases, classdict)
 
 
 # ------------------------------------------------------------------------------
 # Commandline interface
 
+# fmt: off
 
 class Application(metaclass=MetaCommander):
     """standalone: manage post-production tasks for Max standalones.
@@ -472,6 +499,8 @@ class Application(metaclass=MetaCommander):
         """package max standalone for distribution."""
         pkg = Packager(args.path, args.version, args.arch, args.add_file)
         pkg.process()
+
+# fmt: on
 
     def cmdline(self):
         """commandline interface generator."""
