@@ -3,15 +3,6 @@
 
 A cli tool to manage post-production tasks for max standalones.
 
-- [x] cleaning: `xattr -cr PATH/TO/YOUR-APP-NAME.app`
-- [x] shrinking: `ditto --arch <fat.app> <thin.app>`
-- [x] generate entitlements.plist
-- [x] codesigning app bundle
-- [x] packaging to pkg, zip or dmg
-- [x] codesigning installer
-- [x] notarization
-- [x] stapling
-
 rootdir:
     Max8
         save standalone -> a.app
@@ -34,13 +25,18 @@ rootdir:
 """
 import argparse
 import datetime
+from itertools import product
 import json
 import logging
 import os
 import plistlib
+from re import S
 import subprocess
 import sys
 from pathlib import Path
+from typing import Union
+
+pathlike = Union[str, Path]
 
 try:
     import tqdm
@@ -63,7 +59,8 @@ logging.basicConfig(
 # CONSTANTS
 
 CONFIG = {
-    "standalone": "fx.app",
+    "standalone": "Groovin.app",
+    "arch": "dual",
     "app_version": "0.1.2",
     "dev_id": "Bugs Bunny",
     "appleid": "bugs.bunny@icloud.com",
@@ -185,7 +182,7 @@ class PreProcessor(Base):
         self.cmd(f"rm -rf '{self.path}'")
         self.cmd(f"mv '{tmp}' '{self.path}'")
 
-    def process(self):
+    def process(self) -> Path:
         """main class process"""
         if self.pre_clean:
             self.log.info("cleaning app bundle")
@@ -196,6 +193,7 @@ class PreProcessor(Base):
             self.shrink()
             self.log.info("BEFORE: %s", initial_size)
             self.log.info("AFTER:  %s", self.get_size())
+        return self.path
 
 
 class CodeSigner(Base):
@@ -206,7 +204,7 @@ class CodeSigner(Base):
         a-signed.app -> codesign -> a-signed.zip
     """
 
-    def __init__(self, path: str, dev_id: str, entitlements: str = None):
+    def __init__(self, path: pathlike, dev_id: str, entitlements: str = None):
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
@@ -269,7 +267,7 @@ class CodeSigner(Base):
         if res.returncode != 0:
             self.log.critical(res.stderr)
 
-    def process(self):
+    def process(self) -> Path:
         """codesign standalone app bundle"""
         if not self.entitlements:
             gen = Generator(self.appname)
@@ -281,6 +279,7 @@ class CodeSigner(Base):
         self.log.info("codesigning DONE")
         self.log.info("zipping signed {self.path} for notarization")
         self.zip(self.path, self.zip_path)
+        return self.zip_path
 
 
 class Notarizer(Base):
@@ -293,7 +292,7 @@ class Notarizer(Base):
 
     def __init__(
         self,
-        path: str,
+        path: pathlike,
         appleid: str,
         app_password: str,
         app_bundle_id: str,
@@ -322,10 +321,11 @@ class Notarizer(Base):
         self.output_dir.mkdir(exist_ok=True)
         self.cmd(f"unzip -d '{self.output_dir}' '{self.path}'")
 
-    def process(self):
+    def process(self) -> pathlike:
         """notarize zipped standalone.app"""
         self.notarize()
         self.unzip_notarized()
+        return self.output_dir
 
 
 class Stapler(Base):
@@ -337,7 +337,7 @@ class Stapler(Base):
         cp extras (README.md, etc..) to output_dir
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: pathlike):
         self.path = path
         self.log = logging.getLogger(self.__class__.__name__)
 
@@ -346,9 +346,10 @@ class Stapler(Base):
         self.log.info("stapling %s", self.path)
         self.cmd(f"xcrun stapler staple -v {self.path}")
 
-    def process(self):
+    def process(self) -> pathlike:
         """stapling process"""
         self.staple()
+        return self.path
 
 
 class Packager(Base):
@@ -358,7 +359,7 @@ class Packager(Base):
         output_dir -> package -> a-complete.zip
     """
 
-    def __init__(self, path: str, version: str, arch: str, add_file: list[str] = None):
+    def __init__(self, path: pathlike, version: str, arch: str, add_file: list[str] = None):
         self.path = Path(path)
         self.version = version
         self.arch = arch
@@ -371,16 +372,39 @@ class Packager(Base):
         """derives lower-case app name from standalone name <appname>.app"""
         return self.path.stem.lower()
 
+    @property
+    def product(self):
+        """final preprocessed codesigned notarized stapled packaged product!"""
+        return Path(f"{self.appname}-{self.version}-{self.arch}.zip")
+
     def repackage(self):
         """repackage, rezip stapled app.bundle with other related files."""
         self.cmd(
-            f"ditto -c -k --keepParent {self.path} {self.appname}-{self.version}-{self.arch}.zip"
+            f"ditto -c -k --keepParent {self.product}"
         )
 
     def process(self):
         """final codesigned, notarized standalone packaging process."""
         self.repackage()
+        return self.product
 
+
+
+class Automator(Base):
+    """configuration based automator class
+    """
+    def __init__(self, path: str, config_json: str):
+        self.path = path
+        with open(config_json, 'r') as fopen:
+            self.cfg = json.load(fopen)
+
+    def process(self) -> pathlike:
+        """main automated process"""
+        cfg = self.cfg
+        processed = PreProcessor(self.path, cfg['arch'], cfg['pre_clean']).process()
+        signed_zip = CodeSigner(processed, cfg['dev_id']).process()
+        output_dir = Notarizer(signed_zip, cfg['appleid'], cfg['app_password'], cfg['app_bundle_id']).process()
+        return Packager(output_dir, cfg['version'], cfg['arch']).process()
 
 # ------------------------------------------------------------------------------
 # Generic utility functions and classes for commandline ops
@@ -501,6 +525,14 @@ class Application(metaclass=MetaCommander):
         """package max standalone for distribution."""
         pkg = Packager(args.path, args.version, args.arch, args.add_file)
         pkg.process()
+
+    @option("--config-json", "-c", type="str", help="path to config.json")
+    @arg("path", type=str, help="path to standalone")
+    def do_auto(self, args):
+        """semi-automated codesign/notarization process from config.json."""
+        auto = Automator(args.path, args.config_json)
+        product = auto.process()
+        assert Path(product).exists()
 
 # fmt: on
 
