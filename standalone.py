@@ -3,40 +3,50 @@
 
 A cli tool to manage post-production tasks for max standalones.
 
-rootdir:
-    Max8
-        save standalone -> a.app
+The workflow is as follows:
 
-    standalone.py
-        a.app -> codesign -> a-signed.app
-        a-signed.app -> codesign -> a-signed.zip
+```
+in any_dir:
+    Max8.save(standalone)
+        -> a.app
 
-        a-signed.zip -> notarize -> a-notarized.zip
-        a-notarized.zip -> notarize -> unzip (to output_dir)
+    (optional)
+    standalone.preprocess(a.app)
+        -> a-preprocessed.app
 
-output_dir:
-    standalone.py
-        a-notarized.app -> staple -> a-stapled.app
+    standalone.codesign(a.app | a-preprocessed.app)
+        -> a-signed.app
+        -> a-signed.zip
+
+    standalone.notarize(a-signed.zip)
+        -> a-notarized.zip
+        -> output_dir/a-notarized.app
+
+cd any_dir/output_dir:
+    standalone.staple(a-notarized.app)
+        -> a-stapled.app
         cp extras (README.md, etc..) to output_dir
 
-rootdir:
-    standalone.py
-        output_dir -> package -> a-complete.zip
+back to any_dir:
+    standalone.package(output_dir)
+        -> a-packaged.zip
+```
 """
+# pylint: disable = R0201, R0913, R0902, C0103
+
 import argparse
 import datetime
-from itertools import product
 import json
 import logging
 import os
 import plistlib
-from re import S
 import subprocess
 import sys
 from pathlib import Path
 from typing import Union
 
-pathlike = Union[str, Path]
+# type alias
+PathLike = Union[str, Path]
 
 try:
     import tqdm
@@ -45,12 +55,12 @@ try:
     progressbar = tqdm.tqdm
 except ImportError:
     HAVE_PROGRESSBAR = False
-    progressbar = lambda x: x  # noop
+    progressbar = lambda x: x # noop
 
 DEBUG = False
 
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(name)s.%(funcName)s - %(message)s",
     datefmt="%H:%M:%S",
     level=logging.DEBUG if DEBUG else logging.INFO,
 )
@@ -63,7 +73,7 @@ CONFIG = {
     "arch": "dual",
     "app_version": "0.1.2",
     "dev_id": "Bugs Bunny",
-    "appleid": "bugs.bunny@icloud.com",
+    "apple_id": "bugs.bunny@icloud.com",
     "password": "xxxx-xxxx-xxxx-xxxx",
     "bundle_id": "com.acme.fx",
     "include": ["README.md"],
@@ -88,8 +98,8 @@ ENTITLEMENTS = {
 
 
 class Base:
-    """helper mixin class
-    """
+    """helper mixin class"""
+
     def __init__(self):
         self.log = logging.getLogger(self.__class__.__name__)
 
@@ -104,6 +114,7 @@ class Base:
 
     def cmd_output(self, arglist: list[str]) -> str:
         """capture and return shell cmd output."""
+        self.log.debug(" ".join(arglist))
         return subprocess.check_output(arglist, encoding="utf8")
 
     def copy(self, src_path: str, dst_path: str):
@@ -123,9 +134,10 @@ class Generator(Base):
         - entitlements.plist
         - config.json
     """
+
     def __init__(self, path: str):
         self.path = Path(path)
-        self.log = logging.getLogger(self.__class__.__name__)
+        super().__init__()
 
     @property
     def appname(self):
@@ -144,7 +156,7 @@ class Generator(Base):
         """generates a default entitlements.plist file"""
         if not path:
             path = f"{self.appname}.json"
-        with open(path, "w") as fopen:
+        with open(path, "w", encoding="utf8") as fopen:
             json.dump(CONFIG, fopen, indent=2)
         return path
 
@@ -152,16 +164,19 @@ class Generator(Base):
 class PreProcessor(Base):
     """standalone preprocessor class
 
-    operations:
-        - shrinking: fat binaries to reduce size
-        - clean: remove detritus via xattr
+    (optional)
+    standalone.preprocess(a.app)
+        -> a-preprocessed.app
+
+    - shrinking: fat binaries to reduce size
+    - clean: remove detritus via xattr
     """
 
-    def __init__(self, path: str, arch: str = "x86_64", pre_clean: bool = False):
+    def __init__(self, path: PathLike, arch: str = "x86_64", pre_clean: bool = False):
         self.path = Path(path)
         self.arch = arch
         self.pre_clean = pre_clean
-        self.log = logging.getLogger(self.__class__.__name__)
+        super().__init__()
 
     def get_size(self, path=None) -> str:
         """get total size of target path"""
@@ -199,18 +214,18 @@ class PreProcessor(Base):
 class CodeSigner(Base):
     """standalone codesigning class
 
-    operations:
-        a.app -> codesign -> a-signed.app
-        a-signed.app -> codesign -> a-signed.zip
+    standalone.codesign(a.app | a-preprocessed.app)
+        -> a-signed.app
+        -> a-signed.zip
     """
 
-    def __init__(self, path: pathlike, dev_id: str, entitlements: str = None):
+    def __init__(self, path: PathLike, dev_id: str, entitlements: str = None):
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
         self.authority = f"Developer ID Application: {self.dev_id}"
         self._cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
-        self.log = logging.getLogger(self.__class__.__name__)
+        super().__init__()
 
     @property
     def appname(self):
@@ -228,8 +243,7 @@ class CodeSigner(Base):
         for ext in ["mxo", "framework", "dylib", "bundle"]:
             resources.extend(
                 [
-                    i
-                    for i in self.path.glob(subpath.format(ext=ext))
+                    i for i in self.path.glob(subpath.format(ext=ext))
                     if not i.is_symlink()
                 ]
             )
@@ -285,34 +299,40 @@ class CodeSigner(Base):
 class Notarizer(Base):
     """standalone notarizing class
 
-    operations:
-        a-signed.zip -> notarize -> a-notarized.zip
-        a-notarized.zip -> notarize -> unzip (to output_dir)
+    standalone.notarize(a-signed.zip)
+        -> a-notarized.zip
+        -> output_dir/a-notarized.app
     """
 
     def __init__(
         self,
-        path: pathlike,
-        appleid: str,
+        path: PathLike,
+        apple_id: str,
         app_password: str,
         app_bundle_id: str,
         output_dir: str = "output",
     ):
         self.path = Path(path)
-        self.appleid = appleid
+        self.apple_id = apple_id
         self.app_password = app_password
         self.app_bundle_id = app_bundle_id
         self.output_dir = Path(output_dir)
-        self.log = logging.getLogger(self.__class__.__name__)
+        super().__init__()
 
     def notarize(self):
         """notarize using altool (for xcode < 13)
 
-        xcrun altool --notarize-app -f app.zip -t osx -u "sam.smith@gmail.com" -p xxxx-xxxx-xxxx-xxxx -primary-bundle-id com.atari.pacman
+        xcrun altool --notarize-app  \
+            -f app.zip -t osx        \
+            -u "sam.smith@gmail.com" \
+            -p xxxx-xxxx-xxxx-xxxx   \
+            -primary-bundle-id com.atari.pacman
         """
         self.log.info("notarizing %s", self.path)
         self.cmd(
-            f"xcrun altool --notarize-app -f {self.path} -t osx -u {self.appleid} -p {self.app_password} -primary-bundle-id {self.app_bundle_id}"
+            f"xcrun altool --notarize-app -f {self.path} "
+            f"-t osx -u {self.apple_id} -p {self.app_password} "
+            f"-primary-bundle-id {self.app_bundle_id}"
         )
 
     def unzip_notarized(self):
@@ -321,7 +341,7 @@ class Notarizer(Base):
         self.output_dir.mkdir(exist_ok=True)
         self.cmd(f"unzip -d '{self.output_dir}' '{self.path}'")
 
-    def process(self) -> pathlike:
+    def process(self) -> PathLike:
         """notarize zipped standalone.app"""
         self.notarize()
         self.unzip_notarized()
@@ -332,21 +352,22 @@ class Stapler(Base):
     """standalone stapler class
 
     operates in output_dir.
-    operations:
-        a-notarized.app -> staple -> a-stapled.app
+
+    standalone.staple(a-notarized.app)
+        -> a-stapled.app
         cp extras (README.md, etc..) to output_dir
     """
 
-    def __init__(self, path: pathlike):
+    def __init__(self, path: PathLike):
         self.path = path
-        self.log = logging.getLogger(self.__class__.__name__)
+        super().__init__()
 
     def staple(self):
         """staple successful notarization to app.bundle"""
         self.log.info("stapling %s", self.path)
         self.cmd(f"xcrun stapler staple -v {self.path}")
 
-    def process(self) -> pathlike:
+    def process(self) -> PathLike:
         """stapling process"""
         self.staple()
         return self.path
@@ -355,17 +376,22 @@ class Stapler(Base):
 class Packager(Base):
     """standalone packager for distribution
 
-    operations:
-        output_dir -> package -> a-complete.zip
+    standalone.package(output_dir)
+        -> a-packaged.zip
     """
 
-    def __init__(self, path: pathlike, version: str, arch: str, add_file: list[str] = None):
+    def __init__(
+        self, path: PathLike, version: str, arch: str, add_file: list[str] = None
+    ):
         self.path = Path(path)
+        assert (
+            self.path.is_dir
+        ), f"{self.path} should be a directory containing stapled standalone and other files"
         self.version = version
         self.arch = arch
         self.extra_files = add_file
         self.timestamp = datetime.date.today().strftime("%y%m%d")
-        self.log = logging.getLogger(self.__class__.__name__)
+        super().__init__()
 
     @property
     def appname(self):
@@ -377,34 +403,64 @@ class Packager(Base):
         """final preprocessed codesigned notarized stapled packaged product!"""
         return Path(f"{self.appname}-{self.version}-{self.arch}.zip")
 
-    def repackage(self):
-        """repackage, rezip stapled app.bundle with other related files."""
-        self.cmd(
-            f"ditto -c -k --keepParent {self.product}"
-        )
+    def package(self):
+        """package, rezip stapled app.bundle with other related files."""
+        self.cmd(f"ditto -c -k --keepParent {self.path} {self.product}")
 
     def process(self):
         """final codesigned, notarized standalone packaging process."""
-        self.repackage()
+        self.package()
         return self.product
 
 
+class Standalone(Base):
+    """Main class integrating operations of all other process classes."""
 
-class Automator(Base):
-    """configuration based automator class
-    """
-    def __init__(self, path: str, config_json: str):
+    def __init__(
+        self,
+        path: PathLike,
+        version: str,
+        dev_id: str,
+        apple_id: str,
+        app_password: str,
+        app_bundle_id: str,
+        arch: str = "dual",
+        pre_clean: bool = False,
+    ):
         self.path = path
-        with open(config_json, 'r') as fopen:
-            self.cfg = json.load(fopen)
+        self.version = version
+        self.dev_id = dev_id
+        self.apple_id = apple_id
+        self.app_password = app_password
+        self.app_bundle_id = app_bundle_id
+        self.arch = arch
+        self.pre_clean = pre_clean
+        super().__init__()
 
-    def process(self) -> pathlike:
+    def process(self) -> PathLike:
         """main automated process"""
-        cfg = self.cfg
-        processed = PreProcessor(self.path, cfg['arch'], cfg['pre_clean']).process()
-        signed_zip = CodeSigner(processed, cfg['dev_id']).process()
-        output_dir = Notarizer(signed_zip, cfg['appleid'], cfg['app_password'], cfg['app_bundle_id']).process()
-        return Packager(output_dir, cfg['version'], cfg['arch']).process()
+        processed = PreProcessor(self.path, self.arch, self.pre_clean).process()
+        signed_zip = CodeSigner(processed, self.dev_id).process()
+        output_dir = Notarizer(
+            signed_zip, self.apple_id, self.app_password, self.app_bundle_id
+        ).process()
+        return Packager(output_dir, self.version, self.arch).process()
+
+    @classmethod
+    def from_config(cls, path: PathLike, config_json_path: PathLike):
+        """configures standalone class from config.json"""
+        with open(config_json_path, "r", encoding="utf8") as fopen:
+            cfg = json.load(fopen)
+        return cls(
+            path,
+            cfg["version"],
+            cfg["dev_id"],
+            cfg["apple_id"],
+            cfg["app_password"],
+            cfg["app_bundle_id"],
+            cfg["arch"],
+            cfg["pre_clean"],
+        )
 
 # ------------------------------------------------------------------------------
 # Generic utility functions and classes for commandline ops
@@ -412,6 +468,7 @@ class Automator(Base):
 
 # option decorator
 def option(*args, **kwds):
+    """option decorator."""
     def _decorator(func):
         _option = (args, kwds)
         if hasattr(func, "options"):
@@ -427,9 +484,8 @@ def option(*args, **kwds):
 arg = option
 
 # combines option decorators
-
-
 def option_group(*options):
+    """combines option decorators"""
     def _decorator(func):
         for option in options:
             func = option(func)
@@ -505,17 +561,21 @@ class Application(metaclass=MetaCommander):
         sig = CodeSigner(args.path, args.dev_id, args.entitlements)
         sig.process()
 
+
     @arg("path", type=str, help="path to package")
     def do_notarize(self, args):
         """notarize codesigned max standalone."""
-        notary = Notarizer(args.path, args.appleid, args.app_password, args.app_bundle_id, args.output_dir)
+        notary = Notarizer(args.path, args.apple_id, args.app_password,
+                           args.app_bundle_id, args.output_dir)
         notary.process()
+
 
     @arg("path", type=str, help="path to zipped standalone")
     def do_staple(self, args):
         """staple notarized max standalone."""
         stplr = Stapler(args.path)
         stplr.process()
+
 
     @option("--add-file", "-f", action="append", help="add a file to app distro package")
     @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
@@ -529,9 +589,9 @@ class Application(metaclass=MetaCommander):
     @option("--config-json", "-c", type="str", help="path to config.json")
     @arg("path", type=str, help="path to standalone")
     def do_auto(self, args):
-        """semi-automated codesign/notarization process from config.json."""
-        auto = Automator(args.path, args.config_json)
-        product = auto.process()
+        """automated codesign/notarization process from config.json."""
+        standalone = Standalone.from_config(args.path, args.config_json)
+        product = standalone.process()
         assert Path(product).exists()
 
 # fmt: on
