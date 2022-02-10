@@ -191,7 +191,7 @@ class PreProcessor(Base):
     def shrink(self):
         """recursively thins fat binaries in a given folder"""
         self.log.info("shrinking: %s", self.path)
-        tmp = self.path.parent / (self.path.name + "__tmp")
+        tmp = self.path.parent / f'{self.path.name}__tmp'
         self.log.info("START: %s", self.path)
         self.cmd(f"ditto --arch '{self.arch}' '{self.path}' '{tmp}'")
         self.cmd(f"rm -rf '{self.path}'")
@@ -236,6 +236,13 @@ class CodeSigner(Base):
     def zip_path(self):
         """zip path"""
         return self.path.parent / f"{self.path.stem}.zip"
+
+    def is_codesigned(self) -> bool:
+        """check if the app in self.path is codesigned."""
+        res = self.cmd_output(["codesign", "--verify", "--deep", 
+            "--strict", "--verbose=1", str(self.path)])
+        return (("valid on disk" in res) and 
+            ("satisfies its Designated Requirement" in res))
 
     def sign_group(self, category: str, subpath: str):
         """used to collect and codesign items in a bundle subpath"""
@@ -319,6 +326,13 @@ class Notarizer(Base):
         self.output_dir = Path(output_dir)
         super().__init__()
 
+    def is_notarized(self) -> bool:
+        """check if the app in self.path is notarized."""
+        res = self.cmd_output(["spctl", "--assess", "--type=execute",
+                               "--verbose=1", str(self.path)])
+        return (("accepted" in res) and
+                ("source=Notarized Developer ID" in res))
+
     def notarize(self):
         """notarize using altool (for xcode < 13)
 
@@ -379,9 +393,10 @@ class Packager(Base):
     standalone.package(output_dir)
         -> a-packaged.zip
     """
+    FORMATS = set(["zip", "dmg", "pkg"])
 
     def __init__(
-        self, path: PathLike, version: str, arch: str, add_file: list[str] = None
+        self, path: PathLike, version: str, arch: str, format: str = "zip", add_file: list[str] = None
     ):
         self.path = Path(path)
         assert (
@@ -389,9 +404,11 @@ class Packager(Base):
         ), f"{self.path} should be a directory containing stapled standalone and other files"
         self.version = version
         self.arch = arch
+        self.format = format
         self.extra_files = add_file
         self.timestamp = datetime.date.today().strftime("%y%m%d")
         super().__init__()
+        assert self.format in self.FORMATS, "format must be zip, dmg or pkg"
 
     @property
     def appname(self):
@@ -399,13 +416,28 @@ class Packager(Base):
         return self.path.stem.lower()
 
     @property
+    def release_name(self):
+        """name with version, datestamp and architecture"""
+        return f"{self.appname}-{self.version}-{self.arch}"
+
+    @property
     def product(self):
         """final preprocessed codesigned notarized stapled packaged product!"""
-        return Path(f"{self.appname}-{self.version}-{self.arch}.zip")
+        return Path(f"{self.release_name}.{self.format}")
+
+    def package_as_dmg(self):
+        """package distribution as .dmg"""
+        self.cmd(f"hdiutil create ./{self.appname}.dmg -ov -volname 'MyInstaller' -srcfolder ./groovin")
+
 
     def package(self):
         """package, rezip stapled app.bundle with other related files."""
-        self.cmd(f"ditto -c -k --keepParent {self.path} {self.product}")
+        if self.format == "zip":
+            self.cmd(f"ditto -c -k --keepParent {self.path} {self.product}")
+        elif self.format == "dmg":
+            self.cmd(
+                f"hdiutil create {self.product} -ov -format UDZO -volname '{self.appname}' -srcfolder {self.path}")
+        # elif self.format =="pkg":
 
     def process(self):
         """final codesigned, notarized standalone packaging process."""
@@ -605,8 +637,10 @@ class Application(metaclass=MetaCommander):
             epilog=self.epilog,
         )
 
-        parser.add_argument('-v', '--version', action='version',
-                            version='%(prog)s ' + self.version)
+        parser.add_argument(
+            '-v', '--version', action='version', version=f'%(prog)s {self.version}'
+        )
+
 
         ## default arg
         # parser.add_argument('--verbose', '-v', help='increase verbosity')
