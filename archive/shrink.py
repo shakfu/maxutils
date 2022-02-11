@@ -47,8 +47,7 @@ class Shrink:
 
     def _get_size(self):
         """get total size of target path"""
-        txt = self._cmd_output(["du", "-s", "-h", self.path]).strip()
-        return txt
+        return self._cmd_output(["du", "-s", "-h", self.path]).strip()
 
     def is_binary(self, path):
         """returns True if file is a binary file."""
@@ -63,7 +62,7 @@ class Shrink:
 
     def remove_arch(self, path):
         """removes arch from fat binary"""
-        tmp = path.parent / (path.name + "__tmp")
+        tmp = path.parent / f'{path.name}__tmp'
         self._cmd(f"lipo -remove '{self.arch}' '{path}' -output '{tmp}'")
         self._cmd(f"mv '{tmp}' '{path}'")
 
@@ -76,10 +75,9 @@ class Shrink:
                     continue
                 if path.is_symlink():
                     continue
-                if self.is_binary(path):
-                    if self.lipo_check(path):
-                        self.log.debug("added: %s", path)
-                        self.targets.append(path)
+                if self.is_binary(path) and self.lipo_check(path):
+                    self.log.debug("added: %s", path)
+                    self.targets.append(path)
 
     def process(self):
         """main process to recursive remove unneeded arch."""
