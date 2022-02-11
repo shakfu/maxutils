@@ -3,39 +3,7 @@
 
 A cli tool to manage post-production tasks for max standalones.
 
-- [x] cleaning: `xattr -cr PATH/TO/YOUR-APP-NAME.app`
-- [x] shrinking: `ditto --arch <fat.app> <thin.app>`
-- [x] generate entitlements.plist
-- [x] codesigning app bundle
-- [x] packaging to pkg, zip or dmg
-- [x] codesigning installer
-- [x] notarization
-- [ ] stapling
-
-rootdir:
-    
-    Max8
-        save standalone -> a.app
-
-    standalone.py
-
-        a.app -> codesign -> a-signed.app
-
-        a-signed.app -> package -> a-signed.zip
-
-        a-signed.zip -> notarize -> a-notarized.zip
-
-        a-notarized.zip -> unzip (to output_dir)
-
-output_dir:
-    standalone.py
-        a-notarized.app -> staple -> a-stapled.app
-
-        cp extras (README.md, etc..) to output_dir
-
-rootdir:
-    standalone.py
-        output_dir -> repackage -> a-complete.zip
+single-class version
 
 """
 import argparse
@@ -74,17 +42,16 @@ CONFIG = {
     "password": "xxxx-xxxx-xxxx-xxxx",
     "bundle_id": "com.acme.fx",
     "include": ["README.md"],
-}
-
-ENTITLEMENTS = {
-    "com.apple.security.automation.apple-events": True,
-    "com.apple.security.cs.allow-dyld-environment-variables": True,
-    "com.apple.security.cs.allow-jit": True,
-    "com.apple.security.cs.allow-unsigned-executable-memory": True,
-    "com.apple.security.cs.disable-library-validation": True,
-    "com.apple.security.device.audio-input": True,
-    # "com.apple.security.device.microphone": True,
-    # "com.apple.security.app-sandbox": True,
+    "entitlements": {
+        "com.apple.security.automation.apple-events": True,
+        "com.apple.security.cs.allow-dyld-environment-variables": True,
+        "com.apple.security.cs.allow-jit": True,
+        "com.apple.security.cs.allow-unsigned-executable-memory": True,
+        "com.apple.security.cs.disable-library-validation": True,
+        "com.apple.security.device.audio-input": True,
+        # "com.apple.security.device.microphone": True,
+        # "com.apple.security.app-sandbox": True,
+    }
 }
 
 # ----------------------------------------------------------------------------
@@ -151,7 +118,7 @@ class MaxStandalone:
     @property
     def zip_path(self):
         """output zip path"""
-        zipped = self.path.stem + ".zip"
+        zipped = f'{self.path.stem}.zip'
         return self.output_dir / zipped
 
     def cmd(self, shellcmd, *args, **kwds):
@@ -177,7 +144,7 @@ class MaxStandalone:
     def shrink(self):
         """recursively thins fat binaries in a given folder"""
         self.log.info("shrinking: %s", self.path)
-        tmp = self.path.parent / (self.path.name + "__tmp")
+        tmp = self.path.parent / f'{self.path.name}__tmp'
         self.log.info("START: %s", self.path)
         self.cmd(f"ditto --arch '{self.arch}' '{self.path}' '{tmp}'")
         self.cmd(f"rm -rf '{self.path}'")
@@ -188,7 +155,7 @@ class MaxStandalone:
         if not path:
             path = f"{self.appname}-entitlements.plist"
         with open(path, "wb") as fopen:
-            plistlib.dump(ENTITLEMENTS, fopen)
+            plistlib.dump(CONFIG["entitlements"], fopen)
         return path
 
     def generate_config(self, path=None) -> str:
