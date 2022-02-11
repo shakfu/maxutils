@@ -89,11 +89,8 @@ class CustomFormatter(logging.Formatter):
 
 
 handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG if DEBUG else logging.INFO)
 handler.setFormatter(CustomFormatter())
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s.%(funcName)s - %(message)s",
-    datefmt="%H:%M:%S",
     level=logging.DEBUG if DEBUG else logging.INFO,
     handlers=[handler]
 )
