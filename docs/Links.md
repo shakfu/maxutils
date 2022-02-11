@@ -1,4 +1,4 @@
-# Links
+# Useful Links
 
 ## Apple Developer Documentation
 
@@ -36,7 +36,7 @@
 
 - [How do I create a DMG file from a directory?](https://apple.stackexchange.com/questions/48414/how-do-i-create-a-dmg-file-from-a-directory)
 
-- [How to notarize an MacOS command line tool created outside of XCode?](https://stackoverflow.com/questions/64652704/how-to-notarize-an-macos-command-line-tool-created-outside-of-xcode)
+- [How to notarize a MacOS command line tool created outside of XCode?](https://stackoverflow.com/questions/64652704/how-to-notarize-an-macos-command-line-tool-created-outside-of-xcode)
 
 - [How to code sign mac app on osx](https://stackoverflow.com/questions/26283847/how-to-code-sign-mac-app-on-osx)
 
@@ -52,9 +52,25 @@
 
 - [DiskImageDistribution - Tools to create and distribute macOS Applications through disk images](https://github.com/adib/DiskImageDistribution)
 
+- [notary.sh](https://gist.github.com/lunixbochs/0ceeb23be5c3d5c6748165e61c6db493)
+
+- [codesign - python scripts for signing, packaging, notarizing and stapling command line binaries](https://github.com/txoof/codesign)
+
+- [munki-pkg - a simple tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.](https://github.com/munki/munki-pkg)
+
+## Free Tools
+
+- [SD Notary](https://latenightsw.com/sd-notary-notarizing-made-easy/)
+
+## Commercial Toola
+
+- [DropDMG](https://c-command.com/dropdmg/)
+
+- [AppWrapper](https://ohanaware.com/appwrapper/)
+
 ## Comprehensive Guides
 
-[Codesigning and notarizing your standalone for distribution outside the Mac Appstore](https://lessons.livecode.com/m/4071/l/1122100-codesigning-and-notarizing-your-lc-standalone-for-distribution-outside-the-mac-appstore)
+- [Codesigning and notarizing your standalone for distribution outside the Mac Appstore](https://lessons.livecode.com/m/4071/l/1122100-codesigning-and-notarizing-your-lc-standalone-for-distribution-outside-the-mac-appstore)
 
 ## Blog Articles
 

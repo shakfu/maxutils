@@ -3,34 +3,6 @@
 
 A cli tool to manage post-production tasks for max standalones.
 
-The workflow is as follows:
-
-```
-in any_dir:
-    Max8.save(standalone)
-        -> a.app
-
-    (optional)
-    standalone.preprocess(a.app)
-        -> a-preprocessed.app
-
-    standalone.codesign(a.app | a-preprocessed.app)
-        -> a-signed.app
-        -> a-signed.zip
-
-    standalone.notarize(a-signed.zip)
-        -> a-notarized.zip
-        -> output_dir/a-notarized.app
-
-cd any_dir/output_dir:
-    standalone.staple(a-notarized.app)
-        -> a-stapled.app
-        cp extras (README.md, etc..) to output_dir
-
-back to any_dir:
-    standalone.package(output_dir)
-        -> a-packaged.zip
-```
 """
 # pylint: disable = R0201, R0913, R0902, C0103
 
@@ -45,9 +17,6 @@ import sys
 from pathlib import Path
 from typing import Union
 
-# type alias
-PathLike = Union[str, Path]
-
 try:
     import tqdm
 
@@ -57,16 +26,17 @@ except ImportError:
     HAVE_PROGRESSBAR = False
     progressbar = lambda x: x  # noop
 
-DEBUG = False
+__all__ = ['Standalone']
 
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(name)s.%(funcName)s - %(message)s",
-    datefmt="%H:%M:%S",
-    level=logging.DEBUG if DEBUG else logging.INFO,
-)
+# ----------------------------------------------------------------------------
+# TYPE ALIASES
+
+PathLike = Union[str, Path]
 
 # ----------------------------------------------------------------------------
 # CONSTANTS
+
+DEBUG = True
 
 CONFIG = {
     "standalone": "Groovin.app",
@@ -90,11 +60,50 @@ CONFIG = {
 }
 
 # ----------------------------------------------------------------------------
+# LOGGING CONFIGURATION
+
+class CustomFormatter(logging.Formatter):
+
+    white = "\x1b[97;20m"
+    grey = "\x1b[38;20m"
+    green = "\x1b[32;20m"
+    cyan = "\x1b[36;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    fmt = "%(asctime)s - {}%(levelname)-8s{} - %(name)s.%(funcName)s - %(message)s"
+
+    FORMATS = {
+        logging.DEBUG: fmt.format(grey, reset),
+        logging.INFO: fmt.format(green, reset),
+        logging.WARNING: fmt.format(yellow, reset),
+        logging.ERROR: fmt.format(red, reset),
+        logging.CRITICAL: fmt.format(bold_red, reset),
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt, datefmt="%H:%M:%S")
+        return formatter.format(record)
+
+
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG if DEBUG else logging.INFO)
+handler.setFormatter(CustomFormatter())
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s.%(funcName)s - %(message)s",
+    datefmt="%H:%M:%S",
+    level=logging.DEBUG if DEBUG else logging.INFO,
+    handlers=[handler]
+)
+
+# ----------------------------------------------------------------------------
 # UTILITY FUNCTIONS
+
 
 # ----------------------------------------------------------------------------
 # CLASSES
-
 
 class Base:
     """helper mixin class"""
@@ -722,3 +731,11 @@ class Application(metaclass=MetaCommander):
 if __name__ == '__main__':
     app = Application()
     app.cmdline()
+    # b = Base()
+    # b.log.info("This is information")
+    # b.log.debug("This is debug info")
+    # b.log.warning("This is a warning")
+    # b.log.critical("This is critical")
+    # b.log.error("This is error time")
+    # b.cmd("echo 'hello'")
+
