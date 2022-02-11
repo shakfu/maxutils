@@ -24,3 +24,15 @@ There are exceptions to this rule. Most of them are edge cases that most folks c
 6. Ship the zip archive from step 5.
 
 The system will ingest this ticket when the user first launches the app.
+
+## Codesigning a .dmg
+
+```bash
+codesign --force --sign "Developer ID Application: <dev_id>" <pathToDMG>
+```
+
+verification is done via
+
+```bash
+spctl -a -t open --context context:primary-signature -v <pathToDMG>
+```

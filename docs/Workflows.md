@@ -23,7 +23,7 @@ Case A is implemented in `standalone.py` as follows:
 
 3. standalone.notarize(a-signed.app)
     -> a-signed.zip
-    if notarize_result_fail:
+    if notarize_result_fails:
         stop_process
 
 4. standalone.staple(a-signed.app) (from 2)
@@ -60,7 +60,7 @@ Case B is implemented in `standalone.py` as follows:
     -> a-signed.dmg
 
 5. standalone.notarize_dmg(a-signed.dmg)
-    if notarize_result_fail:
+    if notarize_result_fails:
         stop_process
 
 6. standalone.staple_dmg(a-signed.dmg)

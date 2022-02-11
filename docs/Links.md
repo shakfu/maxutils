@@ -10,6 +10,12 @@
 
 - [Technical Note TN2206 - macOS Code Signing In Depth](https://developer.apple.com/library/archive/technotes/tn2206/_index.html)
 
+- [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow) (This uses `notarytool` which is for xcode 13+)
+
+- [Notarizing Apps when Developing with Xcode 12 and Earlier](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow/notarizing_apps_when_developing_with_xcode_12_and_earlier) (This uses `altool` for xode 12 and earlier)
+
+- [Customizing the Xcode Archive Process](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow/customizing_the_xcode_archive_process)
+
 ## Apple Developer Focums
 
 - [Signing a Mac Product For Distribution](https://developer.apple.com/forums/thread/128166)
