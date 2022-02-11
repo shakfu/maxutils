@@ -665,7 +665,7 @@ class Application(metaclass=MetaCommander):
         pkg = Packager(args.path, args.version, args.arch, args.add_file)
         pkg.process()
 
-    @option("--config-json", "-c", type="str", help="path to config.json")
+    @option("--config-json", "-c", type=str, help="path to config.json")
     @arg("path", type=str, help="path to standalone")
     def do_auto(self, args):
         """automated codesign/notarization process from config.json."""
