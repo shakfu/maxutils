@@ -22,9 +22,10 @@ It has the following current and planned features:
 - [x] generate entitlements.plist
 - [x] codesigning app bundle
 - [x] packaging to pkg, zip or dmg
-- [x] codesigning installer
-- [x] notarization
-- [ ] stapling
+- [x] codesigning installer (spkg or dmg)
+- [ ] notarizing codesigned dmg of codesigned standalone
+- [ ] notarizing codesigned pkg of codesigned standalone
+- [x] stapling
 
 ### overview
 

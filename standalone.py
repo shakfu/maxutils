@@ -77,17 +77,16 @@ CONFIG = {
     "password": "xxxx-xxxx-xxxx-xxxx",
     "bundle_id": "com.acme.fx",
     "include": ["README.md"],
-}
-
-ENTITLEMENTS = {
-    "com.apple.security.automation.apple-events": True,
-    "com.apple.security.cs.allow-dyld-environment-variables": True,
-    "com.apple.security.cs.allow-jit": True,
-    "com.apple.security.cs.allow-unsigned-executable-memory": True,
-    "com.apple.security.cs.disable-library-validation": True,
-    "com.apple.security.device.audio-input": True,
-    # "com.apple.security.device.microphone": True,
-    # "com.apple.security.app-sandbox": True,
+    "entitlements": {
+        "com.apple.security.automation.apple-events": True,
+        "com.apple.security.cs.allow-dyld-environment-variables": True,
+        "com.apple.security.cs.allow-jit": True,
+        "com.apple.security.cs.allow-unsigned-executable-memory": True,
+        "com.apple.security.cs.disable-library-validation": True,
+        "com.apple.security.device.audio-input": True,
+        # "com.apple.security.device.microphone": True,
+        # "com.apple.security.app-sandbox": True,
+    }
 }
 
 # ----------------------------------------------------------------------------
@@ -116,6 +115,10 @@ class Base:
         """capture and return shell cmd output."""
         self.log.debug(" ".join(arglist))
         return subprocess.check_output(arglist, encoding="utf8")
+
+    def notify(self, title: str, txt: str):
+        """notify via macos, notifcation with title and text."""
+        self.cmd(f"""osascript -e 'display notification "{txt}" with title "{title}"'""")
 
     def copy(self, src_path: str, dst_path: str):
         """recursively copy from src path to dst path."""
@@ -174,7 +177,7 @@ class Generator(Base):
         if not path:
             path = f"{self.appname}-entitlements.plist"
         with open(path, "wb") as fopen:
-            plistlib.dump(ENTITLEMENTS, fopen)
+            plistlib.dump(CONFIG["entitlements"], fopen)
         return path
 
     def generate_config(self, path=None) -> str:

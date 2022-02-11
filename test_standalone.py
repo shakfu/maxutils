@@ -4,29 +4,6 @@ Requires the following environment variables to be exported:
 - APP
 - DEV_ID
 - APPLE_ID
-
-- [x] standalone.preprocess(a.app) -> a-preprocessed.app
-
-- [x] standalone.codesign(a-preprocessed.app)
-    -> a-signed.app
-    -> a-signed.zip
-
-- [x] standalone.codesign(a.app)
-    -> a-signed.app
-    -> a-signed.zip
-
-    standalone.notarize(a-signed.zip)
-        -> a-notarized.zip
-        -> output_dir/a-notarized.app
-
-cd any_dir/output_dir:
-    standalone.staple(a-notarized.app)
-        -> a-stapled.app
-        cp extras (README.md, etc..) to output_dir
-
-back to any_dir:
-    standalone.package(output_dir)
-        -> a-packaged.zip
 """
 import os
 from pathlib import Path
