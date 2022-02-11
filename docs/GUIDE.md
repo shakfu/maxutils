@@ -1,4 +1,4 @@
-# Notarizaiton and Packaging Guide
+# Codesigning, Notarizaton and Packaging Guide
 
 ## Apple’s General Recommendation
 
