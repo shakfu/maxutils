@@ -48,7 +48,7 @@ def test_existance(app):
     assert app.exists()
 
 def test_standalone_preprocess_clean(app):
-    cleaned_app = standalone.PreProcessor(app, pre_clean=True).process()
+    cleaned_app = standalone.PreProcessor(app, remove_attrs=True).process()
     assert cleaned_app.exists()
 
 def test_standalone_preprocess_shrink(app):

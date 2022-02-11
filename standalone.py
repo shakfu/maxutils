@@ -55,7 +55,7 @@ try:
     progressbar = tqdm.tqdm
 except ImportError:
     HAVE_PROGRESSBAR = False
-    progressbar = lambda x: x # noop
+    progressbar = lambda x: x  # noop
 
 DEBUG = False
 
@@ -122,9 +122,34 @@ class Base:
         self.log.info("copying: %s to %s", src_path, dst_path)
         self.cmd(f"ditto '{src_path}' '{dst_path}'")
 
-    def zip(self, src_path: Path, dst_path: Path):
-        """create a zip archive of src path at dst path."""
-        self.cmd(f"ditto -c -k --keepParent '{src_path}' '{dst_path}'")
+    def zip(self, src: Path, dst: Path):
+        """create a zip archive of src path at dst path.
+
+        Expects a folder 'src' parameter.
+        """
+        self.log.info("zipping %s as %s", src, dst)
+        self.cmd(f"ditto -c -k --keepParent '{src}' '{dst}'")
+
+    def dmg(self, src: Path, dst: Path, volname: str = "Installer"):
+        """create a dmg archive.
+
+        Expects a folder 'src' param.
+        """
+        self.cmd(
+            f"hdiutil create {dst} -ov -format UDZO "
+            f"-volname '{volname}' -srcfolder {src}"
+        )
+
+    def pkg(self, appbundle: Path, dst: Path, dev_id: str):
+        """create and sign a pkg installer.
+
+        Expects a standalone.app as a 'src' parameter.
+        """
+        assert appbundle.suffix == ".app", "Expects an appbundle as a 'src' param."
+        self.cmd(
+            f"productbuild --sign 'Developer ID Installer: {dev_id}' "
+            f"--component {appbundle} /Applications {dst}"
+        )
 
 
 class Generator(Base):
@@ -169,13 +194,21 @@ class PreProcessor(Base):
         -> a-preprocessed.app
 
     - shrinking: fat binaries to reduce size
-    - clean: remove detritus via xattr
+    - remove_attrs: remove extended attrs via xattr -cr
+    - norm_perms: normalize permission to u+rw
     """
 
-    def __init__(self, path: PathLike, arch: str = "x86_64", pre_clean: bool = False):
+    def __init__(
+        self,
+        path: PathLike,
+        arch: str = "dual",
+        remove_attrs: bool = False,
+        norm_perms: bool = False,
+    ):
         self.path = Path(path)
         self.arch = arch
-        self.pre_clean = pre_clean
+        self.remove_attrs = remove_attrs
+        self.norm_perms = norm_perms
         super().__init__()
 
     def get_size(self, path=None) -> str:
@@ -184,24 +217,32 @@ class PreProcessor(Base):
             path = self.path
         return self.cmd_output(["du", "-s", "-h", str(path)]).strip()
 
-    def clean(self):
-        """cleanup detritus from bundle"""
+    def remove_attributes(self):
+        """recursively remove extended attributes from bundle"""
         self.cmd(f"xattr -cr {self.path}")
 
     def shrink(self):
         """recursively thins fat binaries in a given folder"""
         self.log.info("shrinking: %s", self.path)
-        tmp = self.path.parent / f'{self.path.name}__tmp'
+        tmp = self.path.parent / f"{self.path.name}__tmp"
         self.log.info("START: %s", self.path)
         self.cmd(f"ditto --arch '{self.arch}' '{self.path}' '{tmp}'")
         self.cmd(f"rm -rf '{self.path}'")
         self.cmd(f"mv '{tmp}' '{self.path}'")
 
+    def normalize_permissions(self):
+        """recursively normalize permissions (u+rw) in app bundle."""
+        self.log.info("change permissions of %s via 'sudo chmod -R u+rw'", self.path)
+        self.cmd(f"chmod -R u+rw {self.path}")
+
     def process(self) -> Path:
         """main class process"""
-        if self.pre_clean:
-            self.log.info("cleaning app bundle")
-            self.clean()
+        if self.remove_attrs:
+            self.log.info("recursively removing extended attributes from app bundle")
+            self.remove_attributes()
+        if self.norm_perms:
+            self.log.info("recursively normalizing permissions to u+rw in app bundle")
+            self.normalize_permissions()
         if self.arch != "dual":
             initial_size = self.get_size()
             self.log.info("shrinking to %s", self.arch)
@@ -239,10 +280,19 @@ class CodeSigner(Base):
 
     def is_codesigned(self) -> bool:
         """check if the app in self.path is codesigned."""
-        res = self.cmd_output(["codesign", "--verify", "--deep", 
-            "--strict", "--verbose=1", str(self.path)])
-        return (("valid on disk" in res) and 
-            ("satisfies its Designated Requirement" in res))
+        res = self.cmd_output(
+            [
+                "codesign",
+                "--verify",
+                "--deep",
+                "--strict",
+                "--verbose=1",
+                str(self.path),
+            ]
+        )
+        return ("valid on disk" in res) and (
+            "satisfies its Designated Requirement" in res
+        )
 
     def sign_group(self, category: str, subpath: str):
         """used to collect and codesign items in a bundle subpath"""
@@ -250,7 +300,8 @@ class CodeSigner(Base):
         for ext in ["mxo", "framework", "dylib", "bundle"]:
             resources.extend(
                 [
-                    i for i in self.path.glob(subpath.format(ext=ext))
+                    i
+                    for i in self.path.glob(subpath.format(ext=ext))
                     if not i.is_symlink()
                 ]
             )
@@ -328,10 +379,10 @@ class Notarizer(Base):
 
     def is_notarized(self) -> bool:
         """check if the app in self.path is notarized."""
-        res = self.cmd_output(["spctl", "--assess", "--type=execute",
-                               "--verbose=1", str(self.path)])
-        return (("accepted" in res) and
-                ("source=Notarized Developer ID" in res))
+        res = self.cmd_output(
+            ["spctl", "--assess", "--type=execute", "--verbose=1", str(self.path)]
+        )
+        return ("accepted" in res) and ("source=Notarized Developer ID" in res)
 
     def notarize(self):
         """notarize using altool (for xcode < 13)
@@ -393,22 +444,20 @@ class Packager(Base):
     standalone.package(output_dir)
         -> a-packaged.zip
     """
+
     FORMATS = set(["zip", "dmg", "pkg"])
 
     def __init__(
-        self, path: PathLike, version: str, arch: str, format: str = "zip", add_file: list[str] = None
+        self, path: PathLike, dev_id: str, version: str, arch: str, fmt: str = "zip"
     ):
         self.path = Path(path)
-        assert (
-            self.path.is_dir
-        ), f"{self.path} should be a directory containing stapled standalone and other files"
+        self.dev_id = dev_id
         self.version = version
         self.arch = arch
-        self.format = format
-        self.extra_files = add_file
+        self.fmt = fmt
         self.timestamp = datetime.date.today().strftime("%y%m%d")
         super().__init__()
-        assert self.format in self.FORMATS, "format must be zip, dmg or pkg"
+        assert self.fmt in self.FORMATS, "fmt must be zip, dmg or pkg"
 
     @property
     def appname(self):
@@ -423,21 +472,16 @@ class Packager(Base):
     @property
     def product(self):
         """final preprocessed codesigned notarized stapled packaged product!"""
-        return Path(f"{self.release_name}.{self.format}")
-
-    def package_as_dmg(self):
-        """package distribution as .dmg"""
-        self.cmd(f"hdiutil create ./{self.appname}.dmg -ov -volname 'MyInstaller' -srcfolder ./groovin")
-
+        return Path(f"{self.release_name}.{self.fmt}")
 
     def package(self):
-        """package, rezip stapled app.bundle with other related files."""
-        if self.format == "zip":
-            self.cmd(f"ditto -c -k --keepParent {self.path} {self.product}")
-        elif self.format == "dmg":
-            self.cmd(
-                f"hdiutil create {self.product} -ov -format UDZO -volname '{self.appname}' -srcfolder {self.path}")
-        # elif self.format =="pkg":
+        """package app.bundle or colder containing app.bundle with other related files."""
+        if self.fmt == "zip":
+            self.zip(self.path, self.product)
+        if self.fmt == "dmg":
+            self.dmg(self.path, self.product, volname=self.appname)
+        if self.fmt == "pkg":  # expects a standalone.app instead of a folder.
+            self.pkg(self.path, self.product, self.dev_id)
 
     def process(self):
         """final codesigned, notarized standalone packaging process."""
@@ -476,7 +520,7 @@ class Standalone(Base):
         output_dir = Notarizer(
             signed_zip, self.apple_id, self.app_password, self.app_bundle_id
         ).process()
-        return Packager(output_dir, self.version, self.arch).process()
+        return Packager(output_dir, self.dev_id, self.version, self.arch).process()
 
     @classmethod
     def from_config(cls, path: PathLike, config_json_path: PathLike):
@@ -494,6 +538,7 @@ class Standalone(Base):
             cfg["pre_clean"],
         )
 
+
 # ------------------------------------------------------------------------------
 # Generic utility functions and classes for commandline ops
 
@@ -501,6 +546,7 @@ class Standalone(Base):
 # option decorator
 def option(*args, **kwds):
     """option decorator."""
+
     def _decorator(func):
         _option = (args, kwds)
         if hasattr(func, "options"):
@@ -518,9 +564,10 @@ arg = option
 # combines option decorators
 def option_group(*options):
     """combines option decorators"""
+
     def _decorator(func):
-        for option in options:
-            func = option(func)
+        for opt in options:
+            func = opt(func)
         return func
 
     return _decorator
