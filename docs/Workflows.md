@@ -15,7 +15,7 @@ There are four workflows which are differentiated by choice of distribution pack
 
 ### standalone.py - zip workflow
 
-![zip workflow](img/short/zip.svg)
+![zip workflow](img/zip.svg)
 
 Case A is implemented in `standalone.py` as follows:
 
@@ -40,7 +40,7 @@ Case A is implemented in `standalone.py` as follows:
 
 ### pkg
 
-![zip workflow](img/short/pkg.svg)
+![zip workflow](img/pkg.svg)
 
 Case A is implemented in `standalone.py` as follows:
 
@@ -63,7 +63,7 @@ Case A is implemented in `standalone.py` as follows:
 
 ### dmg
 
-![zip workflow](img/short/dmg.svg)
+![zip workflow](img/dmg.svg)
 
 Case A is implemented in `standalone.py` as follows:
 
@@ -83,6 +83,8 @@ Case A is implemented in `standalone.py` as follows:
     -> app-distribution.dmg
 
 ## C. Complex Case for nested pkg installer inside dmg archives
+
+NOT YET IMPLEMENTED
 
 This entails signing all your code from the inside out, up to and including any signable containers. Then notarizing and stapling the outermost container, which is shipped.
 

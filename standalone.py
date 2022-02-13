@@ -139,37 +139,6 @@ class Base:
         self.log.info("zipping %s as %s", src, dst)
         self.cmd(f"ditto -c -k --keepParent '{src}' '{dst}'")
 
-    def dmg(self, src: Path, dst: Path, dev_id: str, volname: str = None):
-        """create a dmg archive.
-
-        Expects an '.app' or '.pkg' param.
-        """
-        if not volname:
-            volname = f"{src.stem}Installer"
-        assert src.suffix in [
-            ".app", ".pkg"], "Expects an '.app' or '.pkg' src param."
-        self.log.info("creating %s", dst)
-        self.cmd(
-            f"hdiutil create -volname '{volname}' -srcfolder '{src}' "
-            f"-ov -format UDZO '{dst}'"
-        )
-        self.log.info("codesigning %s", dst)
-        self.cmd(
-            f"codesign --deep --force --verify --verbose --sign 'Developer ID Application: {dev_id}' "
-            f"--options runtime '{dst}'"
-        )
-
-    def pkg(self, src: Path, dst: Path, dev_id: str):
-        """create and sign a pkg installer.
-
-        Expects a standalone.app as a 'src' parameter.
-        """
-        assert src.suffix == ".app", "Expects an appbundle as a 'src' param."
-        self.cmd(
-            f"productbuild --sign 'Developer ID Installer: {dev_id}' "
-            f"--component {src} /Applications {dst}"
-        )
-
 class Generator(Base):
     """standalone generator class
 
@@ -372,6 +341,37 @@ class CodeSigner(Base):
         if res.returncode != 0:
             self.log.critical(res.stderr)
 
+    def dmg(self, src: Path, dst: Path, dev_id: str, volname: str = None):
+        """create a dmg archive.
+
+        Expects an '.app' or '.pkg' param.
+        """
+        if not volname:
+            volname = f"{src.stem}Installer"
+        assert src.suffix in [
+            ".app", ".pkg"], "Expects an '.app' or '.pkg' src param."
+        self.log.info("creating %s", dst)
+        self.cmd(
+            f"hdiutil create -volname '{volname}' -srcfolder '{src}' "
+            f"-ov -format UDZO '{dst}'"
+        )
+        self.log.info("codesigning %s", dst)
+        self.cmd(
+            f"codesign --deep --force --verify --verbose --sign 'Developer ID Application: {dev_id}' "
+            f"--options runtime '{dst}'"
+        )
+
+    def pkg(self, src: Path, dst: Path, dev_id: str):
+        """create and sign a pkg installer.
+
+        Expects a standalone.app as a 'src' parameter.
+        """
+        assert src.suffix == ".app", "Expects an appbundle as a 'src' param."
+        self.cmd(
+            f"productbuild --sign 'Developer ID Installer: {dev_id}' "
+            f"--component {src} /Applications {dst}"
+        )
+
     def process(self) -> Path:
         """codesign standalone app bundle"""
         if not self.entitlements:
@@ -383,11 +383,11 @@ class CodeSigner(Base):
         self.sign_runtime()
         self.log.info("app codesigning DONE")        
         if self.packaging == "pkg":
-            self.log.info("converting signed {self.path} into pkg for notarization")
+            self.log.info("converting signed {self.path} into pkg for pkg signing / notarization")
             self.pkg(self.path, self.pkg_path, self.dev_id)
             return self.pkg_path
         elif self.packaging == "dmg":
-            self.log.info("converting signed {self.path} into dmg for notarization")
+            self.log.info("converting signed {self.path} into dmg for dmg signing / notarization")
             self.dmg(self.path, self.dmg_path, self.dev_id)
             return self.dmg_path
         else:
@@ -420,48 +420,52 @@ class Notarizer(Base):
 
     def is_notarized(self) -> bool:
         """check if the app in self.path is notarized."""
+        pkgtype = "install" if self.path.suffix == ".pkg" else "execute"
         res = self.cmd_output(
-            ["spctl", "--assess", "--type=execute", "--verbose=1", str(self.path)]
+            ["spctl", "--assess", f"--type={pkgtype}", "--verbose=1", str(self.path)]
         )
         return ("accepted" in res) and ("source=Notarized Developer ID" in res)
 
     def notarize(self):
-        """notarize using altool (for xcode < 13)
-
-        xcrun altool --notarize-app  \
-            -f app.zip -t osx        \
-            -u "sam.smith@gmail.com" \
-            -p xxxx-xxxx-xxxx-xxxx   \
-            -primary-bundle-id com.atari.pacman
-        """
+        """notarize using altool (for xcode < 13)."""
         self.log.info("notarizing %s", self.path)
-        self.cmd(
-            f"xcrun altool --notarize-app -f {self.path} "
-            f"-t osx -u {self.apple_id} -p {self.app_password} "
-            f"-primary-bundle-id {self.app_bundle_id}"
-        )
 
-    def unzip_notarized(self):
-        """unzip notarized to output_dir"""
-        self.log.info("unzipping to %s notarized %s", self.output_dir, self.path)
-        self.output_dir.mkdir(exist_ok=True)
-        self.cmd(f"unzip -d '{self.output_dir}' '{self.path}'")
+        res = self.cmd_output([
+            "xcrun", "altool", "--notarize-app", "--file", str(self.path),
+            "-t", "osx", "-u", self.apple_id,  "-p", self.app_password,
+            "-primary-bundle-id", self.app_bundle_id
+        ])
+        if "No errors uploading" not in res:
+            self.log.critical(res)
+            sys.exit()
+        else:
+            self.log.info(res)
 
     def process(self) -> PathLike:
         """notarize zipped standalone.app"""
+        assert self.path.suffix in [".zip", ".pkg", ".dmg"]
         self.notarize()
-        self.unzip_notarized()
-        return self.output_dir
+        if self.path.suffix == ".pkg":
+            self.log.info(".pkg installer notarized")
+            return self.path
+        elif self.path.suffix == ".dmg":
+            self.log.info(".dmg archive notarized")
+            return self.path
+        else: # .zip
+            self.log.info("app notarized")
+            self.log.info("removing zip used for notarization")
+            self.cmd("rm {self.path}")
+            self.log.info(".app will be processed for stapling")
+            signed_app = self.path.parent / f"{self.path.stem}.app"
+            assert signed_app.exists(), "signed app not available"
+            return signed_app
 
 
 class Stapler(Base):
     """standalone stapler class
 
-    operates in output_dir.
-
     standalone.staple(a-notarized.app)
         -> a-stapled.app
-        cp extras (README.md, etc..) to output_dir
     """
 
     def __init__(self, path: PathLike):
@@ -486,19 +490,17 @@ class Distributor(Base):
         -> a-packaged.zip
     """
 
-    FORMATS = set(["zip", "dmg", "pkg"])
+    FORMATS = set(["app", "pkg", "dmg"])
 
     def __init__(
-        self, path: PathLike, dev_id: str, version: str, arch: str, fmt: str = "zip"
-    ):
+        self, path: PathLike, dev_id: str, version: str, arch: str):
         self.path = Path(path)
         self.dev_id = dev_id
         self.version = version
         self.arch = arch
-        self.fmt = fmt
         self.timestamp = datetime.date.today().strftime("%y%m%d")
         super().__init__()
-        assert self.fmt in self.FORMATS, "fmt must be zip, dmg or pkg"
+        assert self.path.suffix in self.FORMATS, f"must one of {self.FORMATS}"
 
     @property
     def appname(self):
@@ -513,20 +515,23 @@ class Distributor(Base):
     @property
     def product(self):
         """final preprocessed codesigned notarized stapled packaged product!"""
-        return Path(f"{self.release_name}.{self.fmt}")
+        return Path(f"{self.release_name}.{self.path.suffix}")
 
     def package(self):
         """package app.bundle or colder containing app.bundle with other related files."""
-        if self.fmt == "zip":
+        suffix = self.path.suffix
+        if suffix == ".app":
             self.zip(self.path, self.product)
-        if self.fmt == "dmg":
-            self.dmg(self.path, self.product, self.dev_id)
-        if self.fmt == "pkg":  # expects a standalone.app instead of a folder.
-            self.pkg(self.path, self.product, self.dev_id)
+        if suffix == ".pkg":
+            self.zip(self.path, self.product)
+        if suffix == ".dmg":
+            self.path.rename(self.path.parent /
+                             f"{self.release_name}.{suffix}")
 
     def process(self):
         """final codesigned, notarized standalone packaging process."""
         self.package()
+        assert self.product.exists(), "product not packaged or renamed for distribution"
         return self.product
 
 

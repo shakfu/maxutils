@@ -1,12 +1,11 @@
 sequenceDiagram
+  autonumber
+  actor User
   User->>preprocessor: standalone.app
   preprocessor->>codesigner: preprocessed.app
-
-  codesigner->>packager: signed.app
-  packager->>codesigner: unsigned.dmg
-  
+  codesigner-->>User: signed.dmg
   codesigner->>notarizer: signed.dmg
   notarizer->>Apple: signed.dmg
   Apple->>User: success email
-  User->>stapler: signed.dmg
-  stapler->>User: stapled.dmg
+  User-->>stapler: signed.dmg
+  stapler->>User: stapled-standalone.dmg
