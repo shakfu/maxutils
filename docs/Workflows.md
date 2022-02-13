@@ -2,6 +2,8 @@
 
 There are four workflows which are differentiated by choice of distribution packaging.
 
+![zip workflow](img/overview.svg)
+
 ## A. Simple Case for zip archives
 
 1. Sign the app.
@@ -12,6 +14,8 @@ There are four workflows which are differentiated by choice of distribution pack
 6. Ship the zip archive from step 5.
 
 ### standalone.py - zip workflow
+
+![zip workflow](img/short/zip.svg)
 
 Case A is implemented in `standalone.py` as follows:
 
@@ -36,6 +40,8 @@ Case A is implemented in `standalone.py` as follows:
 
 ### pkg
 
+![zip workflow](img/short/pkg.svg)
+
 Case A is implemented in `standalone.py` as follows:
 
 1. (optional) standalone.preprocess(a.app)
@@ -56,6 +62,8 @@ Case A is implemented in `standalone.py` as follows:
     -> app-distribution.zip
 
 ### dmg
+
+![zip workflow](img/short/dmg.svg)
 
 Case A is implemented in `standalone.py` as follows:
 
