@@ -447,7 +447,7 @@ class Stapler(Base):
         return self.path
 
 
-class Packager(Base):
+class Distributor(Base):
     """standalone packager for distribution
 
     standalone.package(output_dir)
@@ -529,7 +529,7 @@ class Standalone(Base):
         output_dir = Notarizer(
             signed_zip, self.apple_id, self.app_password, self.app_bundle_id
         ).process()
-        return Packager(output_dir, self.dev_id, self.version, self.arch).process()
+        return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
 
     @classmethod
     def from_config(cls, path: PathLike, config_json_path: PathLike):
@@ -669,10 +669,11 @@ class Application(metaclass=MetaCommander):
     @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
     @option("--version", "-v", type=str, help="path to app-entitlements.plist")
     @arg("path", type=str, help="path to directory")
-    def do_package(self, args):
+    def do_distribute(self, args):
         """package max standalone for distribution."""
-        pkg = Packager(args.path, args.version, args.arch, args.add_file)
-        pkg.process()
+        dist = Distributor(args.path, args.version, args.arch, args.add_file)
+        dist.process()
+
 
     @option("--config-json", "-c", type=str, help="path to config.json")
     @arg("path", type=str, help="path to standalone")
@@ -696,7 +697,6 @@ class Application(metaclass=MetaCommander):
         parser.add_argument(
             '-v', '--version', action='version', version=f'%(prog)s {self.version}'
         )
-
 
         ## default arg
         # parser.add_argument('--verbose', '-v', help='increase verbosity')

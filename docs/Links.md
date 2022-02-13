@@ -1,5 +1,9 @@
 # Useful Links
 
+## Comprehensive Guides
+
+- [Codesigning and notarizing your standalone for distribution outside the Mac Appstore](https://lessons.livecode.com/m/4071/l/1122100-codesigning-and-notarizing-your-lc-standalone-for-distribution-outside-the-mac-appstore)
+
 ## Apple Developer Documentation
 
 - [Notarizing macOS Software Before Distribution](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution)
@@ -67,10 +71,6 @@
 - [DropDMG](https://c-command.com/dropdmg/)
 
 - [AppWrapper](https://ohanaware.com/appwrapper/)
-
-## Comprehensive Guides
-
-- [Codesigning and notarizing your standalone for distribution outside the Mac Appstore](https://lessons.livecode.com/m/4071/l/1122100-codesigning-and-notarizing-your-lc-standalone-for-distribution-outside-the-mac-appstore)
 
 ## Blog Articles
 
