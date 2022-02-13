@@ -139,27 +139,36 @@ class Base:
         self.log.info("zipping %s as %s", src, dst)
         self.cmd(f"ditto -c -k --keepParent '{src}' '{dst}'")
 
-    def dmg(self, src: Path, dst: Path, volname: str = "Installer"):
+    def dmg(self, src: Path, dst: Path, dev_id: str, volname: str = None):
         """create a dmg archive.
 
-        Expects a folder 'src' param.
+        Expects an '.app' or '.pkg' param.
         """
+        if not volname:
+            volname = f"{src.stem}Installer"
+        assert src.suffix in [
+            ".app", ".pkg"], "Expects an '.app' or '.pkg' src param."
+        self.log.info("creating %s", dst)
         self.cmd(
-            f"hdiutil create {dst} -ov -format UDZO "
-            f"-volname '{volname}' -srcfolder {src}"
+            f"hdiutil create -volname '{volname}' -srcfolder '{src}' "
+            f"-ov -format UDZO '{dst}'"
+        )
+        self.log.info("codesigning %s", dst)
+        self.cmd(
+            f"codesign --deep --force --verify --verbose --sign 'Developer ID Application: {dev_id}' "
+            f"--options runtime '{dst}'"
         )
 
-    def pkg(self, appbundle: Path, dst: Path, dev_id: str):
+    def pkg(self, src: Path, dst: Path, dev_id: str):
         """create and sign a pkg installer.
 
         Expects a standalone.app as a 'src' parameter.
         """
-        assert appbundle.suffix == ".app", "Expects an appbundle as a 'src' param."
+        assert src.suffix == ".app", "Expects an appbundle as a 'src' param."
         self.cmd(
             f"productbuild --sign 'Developer ID Installer: {dev_id}' "
-            f"--component {appbundle} /Applications {dst}"
+            f"--component {src} /Applications {dst}"
         )
-
 
 class Generator(Base):
     """standalone generator class
@@ -269,13 +278,18 @@ class CodeSigner(Base):
         -> a-signed.zip
     """
 
-    def __init__(self, path: PathLike, dev_id: str, entitlements: str = None):
+    def __init__(self, path: PathLike, dev_id: str, entitlements: str = None, packaging="zip"):
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
+        self.packaging = packaging
         self.authority = f"Developer ID Application: {self.dev_id}"
         self._cmd_codesign = ["codesign", "-s", self.authority, "--timestamp", "--deep"]
         super().__init__()
+
+    def _suffix_path(self, suffix):
+        """helper utility to get suffix differentiated path."""
+        return self.path.parent / f"{self.path.stem}.{suffix}"
 
     @property
     def appname(self):
@@ -285,7 +299,17 @@ class CodeSigner(Base):
     @property
     def zip_path(self):
         """zip path"""
-        return self.path.parent / f"{self.path.stem}.zip"
+        return self._suffix_path("zip")
+
+    @property
+    def pkg_path(self):
+        """pkg path"""
+        return self._suffix_path("pkg")
+
+    @property
+    def dmg_path(self):
+        """dmg path"""
+        return self._suffix_path("dmg")
 
     def is_codesigned(self) -> bool:
         """check if the app in self.path is codesigned."""
@@ -357,11 +381,19 @@ class CodeSigner(Base):
         self.sign_group("externals", "Contents/Resources/C74/**/*.{ext}")
         self.sign_group("frameworks", "Contents/Frameworks/**/*.{ext}")
         self.sign_runtime()
-        self.log.info("codesigning DONE")
-        self.log.info("zipping signed {self.path} for notarization")
-        self.zip(self.path, self.zip_path)
-        return self.zip_path
-
+        self.log.info("app codesigning DONE")        
+        if self.packaging == "pkg":
+            self.log.info("converting signed {self.path} into pkg for notarization")
+            self.pkg(self.path, self.pkg_path, self.dev_id)
+            return self.pkg_path
+        elif self.packaging == "dmg":
+            self.log.info("converting signed {self.path} into dmg for notarization")
+            self.dmg(self.path, self.dmg_path, self.dev_id)
+            return self.dmg_path
+        else:
+            self.log.info("zipping signed {self.path} for notarization")
+            self.zip(self.path, self.zip_path)
+            return self.zip_path
 
 class Notarizer(Base):
     """standalone notarizing class
@@ -488,7 +520,7 @@ class Distributor(Base):
         if self.fmt == "zip":
             self.zip(self.path, self.product)
         if self.fmt == "dmg":
-            self.dmg(self.path, self.product, volname=self.appname)
+            self.dmg(self.path, self.product, self.dev_id)
         if self.fmt == "pkg":  # expects a standalone.app instead of a folder.
             self.pkg(self.path, self.product, self.dev_id)
 
@@ -509,8 +541,10 @@ class Standalone(Base):
         apple_id: str,
         app_password: str,
         app_bundle_id: str,
+        method: str = "zip",
         arch: str = "dual",
-        pre_clean: bool = False,
+        remove_attrs: bool = False,
+        norm_perms: bool = False,
     ):
         self.path = path
         self.version = version
@@ -518,16 +552,47 @@ class Standalone(Base):
         self.apple_id = apple_id
         self.app_password = app_password
         self.app_bundle_id = app_bundle_id
+        self.method = method
         self.arch = arch
-        self.pre_clean = pre_clean
+        self.remove_attrs = remove_attrs
+        self.norm_perms = norm_perms
         super().__init__()
 
     def process(self) -> PathLike:
         """main automated process"""
-        processed = PreProcessor(self.path, self.arch, self.pre_clean).process()
+        return {
+            "zip": self.process_as_zip(),
+            "pkg": self.process_as_pkg(),
+            "dmg": self.process_as_dmg(),
+        }[self.method]
+
+    def process_as_zip(self) -> PathLike:
+        """zip automated process"""
+        processed = PreProcessor(self.path, self.arch,
+                                 self.remove_attrs, self.norm_perms).process()
         signed_zip = CodeSigner(processed, self.dev_id).process()
         output_dir = Notarizer(
             signed_zip, self.apple_id, self.app_password, self.app_bundle_id
+        ).process()
+        return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
+
+    def process_as_pkg(self) -> PathLike:
+        """pkg automated process"""
+        processed = PreProcessor(self.path, self.arch,
+                                 self.remove_attrs, self.norm_perms).process()
+        signed_pkg = CodeSigner(processed, self.dev_id, packaging="pkg").process()
+        output_dir = Notarizer(
+            signed_pkg, self.apple_id, self.app_password, self.app_bundle_id
+        ).process()
+        return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
+
+    def process_as_dmg(self) -> PathLike:
+        """dmg automated process"""
+        processed = PreProcessor(self.path, self.arch,
+                                 self.remove_attrs, self.norm_perms).process()
+        signed_dmg = CodeSigner(processed, self.dev_id, packaging="dmg").process()
+        output_dir = Notarizer(
+            signed_dmg, self.apple_id, self.app_password, self.app_bundle_id
         ).process()
         return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
 
