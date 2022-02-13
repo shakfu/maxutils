@@ -1,6 +1,6 @@
 # Workflows
 
-There are two general workflows, differentiated by final packaging format:
+There are four workflows which are differentiated by choice of distribution packaging.
 
 ## A. Simple Case for zip archives
 
@@ -16,25 +16,65 @@ There are two general workflows, differentiated by final packaging format:
 Case A is implemented in `standalone.py` as follows:
 
 1. (optional) standalone.preprocess(a.app)
-    -> a-preprocessed.app
+    -> preprocessed.app
 
 2. standalone.codesign(a.app | a-preprocessed.app)
-    -> a-signed.app
+    -> signed.app to User
+    -> signed.zip
 
-3. standalone.notarize(a-signed.app)
-    -> a-signed.zip
-    if notarize_result_fails:
-        stop_process
+3. standalone.notarize(signed.zip)
+    -> signed.zip to Apple
+    if User receives success email, continue
 
-4. standalone.staple(a-signed.app) (from 2)
-    -> a-stapled.app
+4. standalone.staple(signed.app) (from 2)
+    -> stapled.app
 
-5. standalone.package(export_dir/a-stapled.app)
+5. standalone.distribute(export_dir/stapled.app)
     -> app-distribution.zip
 
-6. ship app-distribution.zip
+## B. Simple case for pkg installer and dmg archives
 
-## B. Complex Case for nested pkg installer inside dmg archives
+### pkg
+
+Case A is implemented in `standalone.py` as follows:
+
+1. (optional) standalone.preprocess(a.app)
+    -> preprocessed.app
+
+2. standalone.codesign(a.app | a-preprocessed.app)
+    -> signed.pkg to User
+    -> signed.pkg
+
+3. standalone.notarize(signed.pkg)
+    -> signed.pkg to Apple
+    if User receives success email, continue
+
+4. standalone.staple(signed.pkg) (from 2)
+    -> stapled.pkg
+
+5. standalone.distribute(export_dir/stapled.pkg)
+    -> app-distribution.zip
+
+### dmg
+
+Case A is implemented in `standalone.py` as follows:
+
+1. (optional) standalone.preprocess(a.app)
+    -> preprocessed.app
+
+2. standalone.codesign(a.app | a-preprocessed.app)
+    -> signed.pkg to User
+    -> signed.dmg
+
+3. standalone.notarize(signed.pkg)
+    -> signed.pkg to Apple
+    if User receives success email, continue
+
+4. standalone.staple(signed.pkg) (from 2)
+    -> stapled.dmg
+    -> app-distribution.dmg
+
+## C. Complex Case for nested pkg installer inside dmg archives
 
 This entails signing all your code from the inside out, up to and including any signable containers. Then notarizing and stapling the outermost container, which is shipped.
 
@@ -44,7 +84,7 @@ This entails signing all your code from the inside out, up to and including any 
 4. Notarize disk image
 5. Staple disk image
 
-### standalone.py - pkg / dmg workflow
+### standalone.py - pkg
 
 Case B is implemented in `standalone.py` as follows:
 

@@ -1,0 +1,9 @@
+sequenceDiagram
+  User->>preprocessor: standalone.app
+  preprocessor->>codesigner: preprocessed.app
+  codesigner->>User: signed.dmg
+  codesigner->>notarizer: signed.dmg
+  notarizer->>Apple: signed.dmg
+  Apple->>User: success email
+  User->>stapler: signed.dmg
+  stapler->>User: stapled-standalone.dmg

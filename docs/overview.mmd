@@ -1,0 +1,25 @@
+graph TD
+A(App) --> B(Prepare App for codesigning)
+B --> C(Sign App using 'Developer ID Application')
+
+C --> D(Create ZIP)
+D --> E(Upload .zip to Apple for Notarization)
+E -->|success| F(Delete zip and staple signed app)
+F --> G(Distribute as .zip archive)
+
+
+C --> H(Create PKG)
+H --> I(Sign .pkg as 'Developer ID Installer')
+I --> J(Upload .pkg to Apple for Notarization)
+J -->|success| K(Staple .pkg)
+K --> L(Distribute as .pkg)
+
+
+C --> M(Create DMG)
+M --> N(Sign .dmg using 'Developer ID Application')
+N --> O(Upload .dmg to Apple for Notarization)
+O -->|success| P(Staple .dmg)
+P --> Q(Distribute as .dmg)
+
+I -->|optional| M
+K -->|optional| R(Distribute as zipped .pkg)

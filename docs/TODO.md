@@ -14,7 +14,8 @@
         "password":  "@env:AC_PASSWORD"
     },
     "sign" :{
-        "application_identity" : "Developer ID Application: Mitchell Hashimoto"
+        "application_identity" : "Developer ID Application: Mitchell Hashimoto",
+        "entitlements_file": "entitlements.plist"
     },
     "dmg" :{
         "output_path":  "terraform.dmg",

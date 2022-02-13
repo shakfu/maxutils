@@ -1,0 +1,13 @@
+sequenceDiagram
+  User->>preprocessor: standalone.app
+  preprocessor->>codesigner: preprocessed.app
+
+  codesigner->>packager: signed.app
+  packager->>codesigner: signed.zip
+  
+  codesigner->>notarizer: signed.zip
+  notarizer->>Apple: signed.zip
+  Apple->>User: success email
+  User->>stapler: signed.app
+  stapler->>packager: stapled.app
+  packager->>User: standalone.zip
