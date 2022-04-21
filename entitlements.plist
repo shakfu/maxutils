@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+        <!-- These are required for Max Standalones -->
+
+        <!-- This  is necessary for triggering apple-events. In addition to 
+        any use of  third party AppleScript objects, this may be necessary 
+        for certain  VST/AU plugins and their particular authorization systems -->
+        <key>com.apple.security.automation.apple-events</key>
+        <true/>
+
+        <!-- Allows for using alternate locations for libraries as set 
+        by environment variables.-->
+        <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+        <true/>
+
+        <!-- This entitlement allows for using JIT compiled code: e.g. CEF, 
+        lua, Java, and Javascript objects could make use of this. -->
+        <key>com.apple.security.cs.allow-jit</key>
+        <true/>
+
+        <!-- This is a superset which is necessary for many of the above instances,
+          including Gen, which do not specifically use newer JIT specific flags for
+          memory mapping executable pages. -->
+        <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+        <true/>
+
+        <!-- This is necessary to load any 3rd party externals or VST/AU plug-ins
+             that have not been notarized.  -->
+        <key>com.apple.security.cs.disable-library-validation</key>
+        <true/>
+
+        <!-- This is necessary to initialize the audio driver and open audio input. -->
+        <key>com.apple.security.device.audio-input</key>
+        <true/>
+</dict>
+</plist>
+

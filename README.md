@@ -1,4 +1,4 @@
-# maxutils: a collection of utility scripts for max/msp
+# maxutils: an bunch of utility scripts for max/msp
 
 This repo includes scripts (typically in python3 and for macOS) to help solve issues in Max / MSP (mostly related to Standalone production).
 
