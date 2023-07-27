@@ -26,3 +26,5 @@ It has the following current and planned features:
 - [ ] packaging to pkg, dmg
 - [ ] codesigning installer (pkg / dmg)
 - [ ] notarizing codesigned dmg of codesigned standalone
+
+

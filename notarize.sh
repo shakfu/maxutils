@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # REQUIRES setting environmental variables to change
 # DEV_ID="Sam Dow" \
 # APP_PASS="cdds-fdsa-ggas-fgwa" \
@@ -8,11 +10,14 @@
 # ...(same as above)
 # notarize.sh staple
 
-TARGETS="py pyjs"
+TARGETS="<external_name1> <external_name2>"
+EXT=.mxo
+
 DEV_ID="${DEV_ID:-Jane Dow}"
 APP_PASS="${APP_PASS:-xxxx-xxxx-xxxx-xxxx}"
 APPLE_ID="${APPLE_ID:-jane.dow@icloud.com}"
-REQUEST_UUID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx"
+REQUEST_UUID="${REQUEST_UUID:-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx}"
+
 
 
 # NO NEED TO CHANGE ANYTHING BELOW HERE
@@ -25,7 +30,7 @@ codesign_only() {
 	for TARGET in $TARGETS
 	do
 		# set local vars
-		EXTERNAL="${TARGET}.mxo"
+		EXTERNAL="${TARGET}${EXT}"
 		ARCHIVE=${EXTERNAL}.zip
 
 		echo "codesigning ${EXTERNAL}"
@@ -35,7 +40,7 @@ codesign_only() {
 				 -f \
 				 --options runtime \
 				 --entitlements=${ENTITLEMENTS} \
-				 ${EXTERNAL}
+				 "${EXTERNAL}"
 	done
 }
 
@@ -43,15 +48,15 @@ notarize_only() {
 	for TARGET in $TARGETS
 	do
 		# set local vars
-		EXTERNAL="${TARGET}.mxo"
+		EXTERNAL="${TARGET}${EXT}"
 		ARCHIVE=${EXTERNAL}.zip
 
 		echo "creating archive: ${ARCHIVE}"
-		ditto -c -k --keepParent ${EXTERNAL} ${ARCHIVE}
+		ditto -c -k --keepParent "${EXTERNAL}" "${ARCHIVE}"
 
 		echo "notarizing ${ARCHIVE}"
 		xcrun altool --notarize-app \
-			--file ${ARCHIVE} \
+			--file "${ARCHIVE}" \
 			-t osx \
 			-u "${APPLE_ID}" \
 			-p "${APP_PASS}" \
@@ -59,11 +64,12 @@ notarize_only() {
 	done
 }
 
+
 codesign_notarize_all() {
 	for TARGET in $TARGETS
 	do
 		# set local vars
-		EXTERNAL="${TARGET}.mxo"
+		EXTERNAL="${TARGET}${EXT}"
 		ARCHIVE=${EXTERNAL}.zip
 
 		echo "codesigning ${EXTERNAL}"
@@ -73,14 +79,14 @@ codesign_notarize_all() {
 				 -f \
 				 --options runtime \
 				 --entitlements=${ENTITLEMENTS} \
-				 ${EXTERNAL}
+				 "${EXTERNAL}"
 
 		echo "creating archive: ${ARCHIVE}"
-		ditto -c -k --keepParent ${EXTERNAL} ${ARCHIVE}
+		ditto -c -k --keepParent "${EXTERNAL}" "${ARCHIVE}"
 
 		echo "notarizing ${ARCHIVE}"
 		xcrun altool --notarize-app \
-			--file ${ARCHIVE} \
+			--file "${ARCHIVE}" \
 			-t osx \
 			-u "${APPLE_ID}" \
 			-p "${APP_PASS}" \
@@ -89,33 +95,95 @@ codesign_notarize_all() {
 }
 
 
+# $1: srcfolder
+# $2: <name> of volname and <name>.dmg
+create_dmg() {
+	name=${1%.*}
+	hdiutil create -volname "${name}" \
+		-srcfolder "$1" \
+		-ov \
+		-format UDZO \
+		"${name}".dmg
+}
+
+
+codesign_dmg() {
+	codesign --sign "${AUTHORITY}" \
+		--deep \
+		--force \
+		--verbose \
+		--options runtime \
+		"$1"
+}
+
+verify_dmg() {
+	codesign --verify --verbose "$1"
+}
+
+notarize_dmg() {
+	xcrun altool --notarize-app \
+		--file "$1" \
+		-t osx \
+		-u "${APPLE_ID}" \
+		-p "${APP_PASS}" \
+		-primary-bundle-id "${BUNDLE_ID}"
+}
+
+staple_dmg() {
+	xcrun stapler staple -v "$1"
+}
+
+
+cleanup_staple_all() {
+	for TARGET in $TARGETS
+	do
+		# set local vars
+		EXTERNAL="${TARGET}${EXT}"
+		ARCHIVE="${EXTERNAL}".zip
+
+		echo "removing archive: ${ARCHIVE}"
+		rm "${ARCHIVE}"
+
+		echo "stapling signed external: ${EXTERNAL}"
+		xcrun stapler staple -v "${EXTERNAL}"
+
+		# ditto -c -k --keepParent ${EXTERNAL} ${ARCHIVE}
+	done
+}
+
+
+check_status() {
+	xcrun altool --notarization-info "${REQUEST_UUID}" \
+		--username "${APPLE_ID}" \
+		--password "${APP_PASS}"
+
+}
+
+check_dmg() {
+	spctl -a -t open --context context:primary-signature -v "$1"
+}
+
 
 staple_zip() {
 	for TARGET in $TARGETS
 	do
 		# set local vars
 		EXTERNAL="${TARGET}.mxo"
-		ARCHIVE=${EXTERNAL}.zip
+		ARCHIVE="${EXTERNAL}".zip
 
 		echo "removing archive: ${ARCHIVE}"
-		rm ${ARCHIVE}
+		rm "${ARCHIVE}"
 
 		echo "stapling signed external: ${EXTERNAL}"
-		xcrun stapler staple -v ${EXTERNAL}
+		xcrun stapler staple -v "${EXTERNAL}"
 
-		ditto -c -k --keepParent ${EXTERNAL} ${ARCHIVE}
+		ditto -c -k --keepParent "${EXTERNAL}" "${ARCHIVE}"
 	done
 }
 
-check_status() {
-	xcrun altool --notarization-info ${REQUEST_UUID} \
-		--username ${APPLE_ID} \
-		--password ${APP_PASS}
-
-}
 
 check_notarize() {
-    codesign -vvvv -R="notarized" --check-notarization $1
+    codesign -vvvv -R="notarized" --check-notarization "$1"
 }
 
 
@@ -130,3 +198,4 @@ elif [ "$1" == "staple" ]; then
 else
 	exit
 fi
+
