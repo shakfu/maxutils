@@ -98,6 +98,10 @@ class MaxProduct(abc.ABC):
         dmg = self.root / f"{self.dist_name}.dmg"
         return dmg.resolve()
 
+    def is_valid(self) -> bool:
+        """check if product meets minimum standards."""
+        return False
+
 
 class MaxExternal(MaxProduct):
     """Max external product
