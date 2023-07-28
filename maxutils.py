@@ -6,17 +6,17 @@ MaxProduct
     MaxPackage(MaxProduct)
     MaxExternal(MaxProduct)
 
-MaxReleaseManager:
-    MaxExternalManager(MaxReleaseManager)
-    MaxStandaloneManager(MaxReleaseManager)
-    MaxPackageManager(MaxReleaseManager)
+MaxProductManager:
+    MaxExternalManager(MaxProductManager)
+    MaxStandaloneManager(MaxProductManager)
+    MaxPackageManager(MaxProductManager)
 
-MaxProductManager(product)
-    delegates_to
-        MaxExternalManager
-        MaxStandaloneManager
-        MaxPackageManager
-
+MaxReleaseManager(path, version=None)
+    selects product_class from path
+    delegates to manager, one of
+        MaxExternalManager(product)
+        MaxStandaloneManager(product)
+        MaxPackageManager(product)
 """
 import abc
 import argparse
@@ -52,50 +52,45 @@ ENTITLEMENTS = {
         # any use of third party AppleScript objects, this may be necessary
         # for certain VST/AU plugins and their particular authorization systems
         "com.apple.security.automation.apple-events": True,
-
         # Allows for using alternate locations for libraries as set
         # by environment variables.
         "com.apple.security.cs.allow-dyld-environment-variables": True,
-
         # This entitlement allows for using JIT compiled code: e.g. CEF,
         # lua, Java, and Javascript objects could make use of this.
         "com.apple.security.cs.allow-jit": True,
-
         # This is a superset which is necessary for many of the above instances,
         # including Gen, which do not specifically use newer JIT specific flags for
         # memory mapping executable pages.
         "com.apple.security.cs.allow-unsigned-executable-memory": True,
-
         # This is necessary to load any 3rd party externals or VST/AU plug-ins
         # that have not been notarized.
         "com.apple.security.cs.disable-library-validation": True,
-
         # This is necessary to initialize the audio driver and open audio input.
         "com.apple.security.device.audio-input": True,
     },
-
     # required for externals (see info above)
     "external": {
         "com.apple.security.cs.allow-jit": True,
         "com.apple.security.cs.allow-unsigned-executable-memory": True,
         "com.apple.security.cs.disable-library-validation": True,
-    }
+    },
 }
 
 
 def get_var(x):
     return sysconfig.get_config_var(x)
 
+
 def get_path(x):
     return pathlib.Path(sysconfig.get_config_var(x))  # type: ignore
 
 
 class MaxProduct(abc.ABC):
-    """abstract class providing requirements to specify a Max product
-    """
-    def __init__(self, path: str | Path, version: str):
+    """abstract class providing requirements to specify a Max product"""
+
+    def __init__(self, path: str | Path, version: Optional[str] = None):
         self.path: Path = Path(path)
-        self.version: str = version
+        self.version: str = version or "0.0.1"
         self.name: str = self.path.stem
         self.root: Path = self.path.parent
 
@@ -115,8 +110,7 @@ class MaxProduct(abc.ABC):
 
     @property
     def dist_name(self) -> str:
-        """standard dist name: `<name>-<system>-<arch>-<ver>`
-        """
+        """standard dist name: `<name>-<system>-<arch>-<ver>`"""
         return f"{self.name}-{self.system}-{self.arch}-{self.version}"
 
     @property
@@ -131,27 +125,27 @@ class MaxProduct(abc.ABC):
 
 
 class MaxExternal(MaxProduct):
-    """Max external product
-    """
-    def __init__(self, path: str | Path, version: str):
+    """Max external product"""
+
+    def __init__(self, path: str | Path, version: Optional[str] = None):
         super().__init__(path, version)
         self.suffix = self.path.suffix
         assert self.suffix in [".mxo", ".mxe64", ".mxe"], "incompatible target"
 
 
 class MaxStandalone(MaxProduct):
-    """Max standalone product
-    """
-    def __init__(self, path: str | Path, version: str):
+    """Max standalone product"""
+
+    def __init__(self, path: str | Path, version: Optional[str] = None):
         super().__init__(path, version)
         self.suffix = self.path.suffix
         assert self.suffix in [".app", ".exe"]
 
 
 class MaxPackage(MaxProduct):
-    """Max package product
-    """
-    def __init__(self, path: str | Path, version: str):
+    """Max package product"""
+
+    def __init__(self, path: str | Path, version: Optional[str] = None):
         super().__init__(path, version)
 
         self.package_name = self.name
@@ -212,21 +206,26 @@ class MaxPackage(MaxProduct):
         self.mac_dep_target = "10.13"
 
 
-class MaxReleaseManager(abc.ABC):
+class MaxProductManager(abc.ABC):
     """abstract class providing general release mgmt services.
 
-        Provides common platform-indepedent functionality for
-        signing, notarizing, shrinking, packaging Max product)
+    Provides common platform-indepedent functionality for
+    signing, notarizing, shrinking, packaging Max product)
     """
-    def __init__(self,
-                 product: MaxProduct,
-                 dev_id: Optional[str] = None,
-                 keychain_profile: Optional[str] = None,
-                 entitlements: Optional[str] = None,
-                 dry_run=False):
+
+    def __init__(
+        self,
+        product: MaxProduct,
+        dev_id: Optional[str] = None,
+        keychain_profile: Optional[str] = None,
+        entitlements: Optional[str] = None,
+        dry_run=False,
+    ):
         self.product = product
         # self.variant, self.product_dmg = self.setup(variant)
-        self.dev_id = dev_id or os.getenv("DEV_ID", "-")  # '-' fallback to ad-hoc signing
+        self.dev_id = dev_id or os.getenv(
+            "DEV_ID", "-"
+        )  # '-' fallback to ad-hoc signing
         self.keychain_profile = keychain_profile
         self.dry_run = dry_run
         self.entitlements = entitlements
@@ -243,8 +242,8 @@ class MaxReleaseManager(abc.ABC):
             entitlements_dict.update(kwds)
         else:
             entitlements_dict = kwds
-        output_path = destination_folder / 'entitlements.plist'
-        with open(output_path, 'w') as f:
+        output_path = destination_folder / "entitlements.plist"
+        with open(output_path, "w") as f:
             f.write(plistlib.dumps(entitlements_dict).decode())
 
     def sign(self):
@@ -284,10 +283,9 @@ class MaxReleaseManager(abc.ABC):
                     signer.process()
 
 
+class MaxStandaloneManager(MaxProductManager):
+    """manage max standalones"""
 
-class MaxStandaloneManager(MaxReleaseManager):
-    """manage max standalones
-    """
     def sign(self):
         """codesign standalone"""
         self.sign_folder(self.product.path)
@@ -305,9 +303,9 @@ class MaxStandaloneManager(MaxReleaseManager):
         """staple .dmg"""
 
 
-class MaxPackageManager(MaxReleaseManager):
-    """manage max packages
-    """
+class MaxPackageManager(MaxProductManager):
+    """manage max packages"""
+
     def sign(self):
         """codesign package"""
         self.sign_folder(self.product.path)
@@ -325,9 +323,9 @@ class MaxPackageManager(MaxReleaseManager):
         """staple .dmg"""
 
 
-class MaxExternalManager(MaxReleaseManager):
-    """manage max external
-    """
+class MaxExternalManager(MaxProductManager):
+    """manage max external"""
+
     def sign(self):
         """codesign external"""
         self.sign_folder(self.product.path)
@@ -345,16 +343,46 @@ class MaxExternalManager(MaxReleaseManager):
         """staple .dmg"""
 
 
-class MaxProductManager:
-    """frontend class delegates to specialized managers
-    """
-    def __init__(self, product):
-        self.product = product
-        self.manager = {
-            MaxStandalone: MaxStandaloneManager,
-            MaxExternal: MaxExternalManager,
-            MaxPackage: MaxPackageManager,
-        }[self.product.__class__](self.product)
+class MaxReleaseManager:
+    """frontend class delegates to specialized managers"""
+
+    def __init__(
+        self,
+        path: str | Path,
+        version: Optional[str] = None,
+        dev_id: Optional[str] = None,
+        keychain_profile: Optional[str] = None,
+        entitlements: Optional[str | Path] = None,
+        dry_run: bool = False,
+    ):
+        self.path: Path = Path(path)
+        self.version: str = version or "0.0.1"
+        self.product: MaxProduct = self.get_product()
+        self.manager: MaxProductManager = self.get_product_manager()
+
+        self.dev_id = dev_id or os.getenv(
+            "DEV_ID", "-"
+        )  # '-' fallback to ad-hoc signing
+        self.keychain_profile = keychain_profile
+        self.dry_run = dry_run
+        self.entitlements = entitlements
+
+    def get_product(self) -> MaxProduct:
+        if self.path.suffix in [".mxo", ".mxe64", ".mxe"]:
+            return MaxExternal(self.path)
+        elif self.path.suffix in [".app", ".exe"]:
+            return MaxStandalone(self.path)
+        elif self.path.is_dir():
+            return MaxPackage(self.path)
+        else:
+            raise TypeError("cannot find product")
+
+    def get_product_manager(self) -> MaxProductManager:
+        return {
+            "MaxStandalone": MaxStandaloneManager,
+            "MaxExternal": MaxExternalManager,
+            "MaxPackage": MaxPackageManager,
+        }[self.product.__class__.__name__](self.product)
 
     def sign(self):
         """codesign product"""
@@ -377,17 +405,19 @@ class MaxProductManager:
         self.manager.staple_dmg()
 
 
-
 class Project:
     """A place for all the files, resources, and information required to
     build one or more software products.
     """
 
     def __init__(
-        self, name: str, version: Optional[str] = None, root: Optional[str | pathlib.Path] = None
+        self,
+        name: str,
+        version: Optional[str] = None,
+        root: Optional[str | pathlib.Path] = None,
     ):
         self.name = name
-        self.version = version or '0.0.1'
+        self.version = version or "0.0.1"
         self.root: pathlib.Path = pathlib.Path(root) if root else pathlib.Path.cwd()
         self.arch = platform.machine()
         self.system = platform.system()
@@ -525,7 +555,7 @@ class Project:
 
     def record_variant(self, name):
         if name.startswith(self.name):
-            variant = name[len(self.name+"_") :].replace("_", "-")
+            variant = name[len(self.name + "_") :].replace("_", "-")
             self.cache_set(
                 VARIANT=variant,
                 PRODUCT_DMG=self.get_dmg(variant),
@@ -798,9 +828,7 @@ class CodesignExternal:
 
     @staticmethod
     def matchers():
-        return [
-            CodesignExternal.match_suffix
-        ]
+        return [CodesignExternal.match_suffix]
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""
@@ -1000,8 +1028,6 @@ class CodesignExternal:
                 app.process()
 
 
-
-
 # option decorator
 def option(*args, **kwds):
     """decorator to provide an argparse option to a method."""
@@ -1121,7 +1147,9 @@ class Commander(metaclass=MetaCommander):
                 else:  # (x:xs)
                     if head in structure:
                         _subparsers = structure[head]
-                        subparser = self._add_parser(_subparsers, subcmd, name="_".join(tail))
+                        subparser = self._add_parser(
+                            _subparsers, subcmd, name="_".join(tail)
+                        )
 
         if len(sys.argv) <= 1:
             options = parser.parse_args(self.default_args)
@@ -1149,7 +1177,8 @@ class Application(Commander):
     def do_package(self, args):
         """package, sign and release external"""
         mgr = PackageManager(
-            args.variant, args.dev_id, args.keychain_profile, args.dry_run)
+            args.variant, args.dev_id, args.keychain_profile, args.dry_run
+        )
         mgr.process()
 
     # def do_package_sign(self, args):
@@ -1186,6 +1215,7 @@ class Application(Commander):
     #     """collect dmg"""
     #     mgr = PackageManager()
     #     mgr.collect_dmg()
+
 
 if __name__ == "__main__":
     Application().cmdline()

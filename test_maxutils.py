@@ -22,7 +22,6 @@ def standalone():
     shutil.rmtree(_standalone)
     remove_detritus(FIXTURE_DIR)
 
-
 @pytest.fixture
 def external():
     with zipfile.ZipFile(FIXTURE_DIR / 'csound~.mxo.zip', 'r') as zip_ref:
@@ -71,23 +70,32 @@ def test_max_external_manager(external):
     m = maxutils.MaxExternalManager(external)
     assert m.product
 
-def test_max_product_manager_with_standalone(standalone):
-    m = maxutils.MaxProductManager(standalone)
+def test_max_release_manager_with_standalone(standalone):
+    m = maxutils.MaxReleaseManager(standalone)
     assert m.product
     assert isinstance(m.manager, maxutils.MaxStandaloneManager)
     assert m.manager.product
-    m.sign()
 
-def test_max_product_manager_with_package(package):
-    m = maxutils.MaxProductManager(package)
+def test_max_release_manager_with_package(package):
+    m = maxutils.MaxReleaseManager(package)
     assert m.product
     assert isinstance(m.manager, maxutils.MaxPackageManager)
     assert m.manager.product
-    m.sign()
 
-def test_max_product_manager_with_external(external):
-    m = maxutils.MaxProductManager(external)
+def test_max_release_manager_with_external(external):
+    m = maxutils.MaxReleaseManager(external)
     assert m.product
     assert isinstance(m.manager, maxutils.MaxExternalManager)
     assert m.manager.product
+
+def test_max_product_manager_with_standalone_sign(standalone):
+    m = maxutils.MaxProductManager(standalone)
+    m.sign()
+
+def test_max_product_manager_with_package_sign(package):
+    m = maxutils.MaxProductManager(package)
+    m.sign()
+
+def test_max_product_manager_with_external_sign(external):
+    m = maxutils.MaxProductManager(external)
     m.sign()
