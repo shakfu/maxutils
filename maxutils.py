@@ -175,7 +175,7 @@ class MaxPackage(MaxProduct):
         self.build_lib = self.build / "lib"
 
         # collect stapled and zipped .dmgs in release directory
-        self.release_dir = self.HOME / "Downloads" / "PYJS_RELEASE"
+        self.release_dir = self.HOME / "Downloads" / "MAX_PRODUCTS_RELEASE"
 
         # settings
         self.mac_dep_target = "10.13"
