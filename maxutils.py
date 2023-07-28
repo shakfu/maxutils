@@ -6,9 +6,10 @@ MaxProduct
     MaxPackage(MaxProduct)
     MaxExternal(MaxProduct)
 
-MaxReleaseManager
-    MaxMacOSReleaseManager(MaxReleaseManager)
-    MaxWindowsReleaseManager(MaxReleaseManager)
+MaxReleaseManager:
+    MaxExternalManager(MaxReleaseManager)
+    MaxStandaloneManager(MaxReleaseManager)
+    MaxPackageManager(MaxReleaseManager)
 
 MaxProductManager(product)
     delegates_to
@@ -45,12 +46,41 @@ logging.basicConfig(
 )
 
 ENTITLEMENTS = {
-    "com.apple.security.cs.allow-jit": True,
-    "com.apple.security.cs.allow-unsigned-executable-memory": True,
-    "com.apple.security.cs.disable-library-validation": True,
+    # required for standalones
+    "standalone": {
+        # This  is necessary for triggering apple-events. In addition to
+        # any use of third party AppleScript objects, this may be necessary
+        # for certain VST/AU plugins and their particular authorization systems
+        "com.apple.security.automation.apple-events": True,
+
+        # Allows for using alternate locations for libraries as set
+        # by environment variables.
+        "com.apple.security.cs.allow-dyld-environment-variables": True,
+
+        # This entitlement allows for using JIT compiled code: e.g. CEF,
+        # lua, Java, and Javascript objects could make use of this.
+        "com.apple.security.cs.allow-jit": True,
+
+        # This is a superset which is necessary for many of the above instances,
+        # including Gen, which do not specifically use newer JIT specific flags for
+        # memory mapping executable pages.
+        "com.apple.security.cs.allow-unsigned-executable-memory": True,
+
+        # This is necessary to load any 3rd party externals or VST/AU plug-ins
+        # that have not been notarized.
+        "com.apple.security.cs.disable-library-validation": True,
+
+        # This is necessary to initialize the audio driver and open audio input.
+        "com.apple.security.device.audio-input": True,
+    },
+
+    # required for externals (see info above)
+    "external": {
+        "com.apple.security.cs.allow-jit": True,
+        "com.apple.security.cs.allow-unsigned-executable-memory": True,
+        "com.apple.security.cs.disable-library-validation": True,
+    }
 }
-
-
 
 
 def get_var(x):
@@ -58,9 +88,6 @@ def get_var(x):
 
 def get_path(x):
     return pathlib.Path(sysconfig.get_config_var(x))  # type: ignore
-
-def match_suffix(target):
-    return target.suffix in CodesignExternal.FOLDER_EXTENSIONS
 
 
 class MaxProduct(abc.ABC):
@@ -185,8 +212,11 @@ class MaxPackage(MaxProduct):
         self.mac_dep_target = "10.13"
 
 
-class DeploymentManager(abc.ABC):
-    """abstract superclass provides general deployment services
+class MaxReleaseManager(abc.ABC):
+    """abstract class providing general release mgmt services.
+
+        Provides common platform-indepedent functionality for
+        signing, notarizing, shrinking, packaging Max product)
     """
     def __init__(self,
                  product: MaxProduct,
@@ -199,6 +229,7 @@ class DeploymentManager(abc.ABC):
         self.dev_id = dev_id or os.getenv("DEV_ID", "-")  # '-' fallback to ad-hoc signing
         self.keychain_profile = keychain_profile
         self.dry_run = dry_run
+        self.entitlements = entitlements
         # self.entitlements = entitlements or self.project.entitlements / "entitlements.plist"
         # assert self.entitlements.exists(), f"not found: {self.entitlements}"
         self.log = logging.getLogger(__class__.__name__)
@@ -231,12 +262,35 @@ class DeploymentManager(abc.ABC):
     def staple_dmg(self):
         """staple .dmg"""
 
+    def sign_folder(self, folder: Path | str):
+        """recursively sign all binary elements in folder"""
+        target_folder = Path(folder)
+        assert target_folder.exists(), f"not found: {target_folder}"
+        self.log.info("target_folder: %s", target_folder)
+        targets = list(target_folder.iterdir())
+        assert len(targets) > 0, "no targets to sign"
+        for target in targets:
+            if any(match(target) for match in CodesignExternal.matchers()):
+                # if target.suffix in CodesignExternal.FOLDER_EXTENSIONS:
+                signer = CodesignExternal(
+                    target,
+                    dev_id=self.dev_id,
+                    entitlements=str(self.entitlements),
+                    dry_run=self.dry_run,
+                )
+                if signer.dry_run:
+                    signer.process_dry_run()
+                else:
+                    signer.process()
 
-class MaxStandaloneManager(DeploymentManager):
+
+
+class MaxStandaloneManager(MaxReleaseManager):
     """manage max standalones
     """
     def sign(self):
         """codesign standalone"""
+        self.sign_folder(self.product.path)
 
     def package_as_dmg(self):
         """package product as .dmg"""
@@ -251,11 +305,12 @@ class MaxStandaloneManager(DeploymentManager):
         """staple .dmg"""
 
 
-class MaxPackageManager(DeploymentManager):
+class MaxPackageManager(MaxReleaseManager):
     """manage max packages
     """
     def sign(self):
         """codesign package"""
+        self.sign_folder(self.product.path)
 
     def package_as_dmg(self):
         """package product as .dmg"""
@@ -270,11 +325,12 @@ class MaxPackageManager(DeploymentManager):
         """staple .dmg"""
 
 
-class MaxExternalManager(DeploymentManager):
+class MaxExternalManager(MaxReleaseManager):
     """manage max external
     """
     def sign(self):
         """codesign external"""
+        self.sign_folder(self.product.path)
 
     def package_as_dmg(self):
         """package product as .dmg"""
@@ -390,7 +446,7 @@ class Project:
         self.build_lib = self.build / "lib"
 
         # collect stapled and zipped .dmgs in release directory
-        self.release_dir = self.HOME / "Downloads" / "PYJS_RELEASE"
+        self.release_dir = self.HOME / "Downloads" / "MAX_PRODUCTS_RELEASE"
 
         # python related
         self.py_version = get_var("py_version")
@@ -583,7 +639,7 @@ class PackageManager:
         self.sign_folder(self.project.support)
 
     def sign_folder(self, folder):
-        matchers = [match_suffix]
+        matchers = CodesignExternal.matchers()
         root = pathlib.Path(__file__).parent.parent.parent.parent.parent
         target_folder = root / folder
         assert target_folder.exists(), f"not found: {target_folder}"
@@ -702,7 +758,7 @@ class CodesignExternal:
 
     def __init__(
         self,
-        path: str,
+        path: str | Path,
         dev_id: Optional[str] = None,
         entitlements: Optional[str] = None,
         dry_run: bool = False,
@@ -735,6 +791,16 @@ class CodesignExternal:
             self.project.py_name: "runtime",
             "python3": "runtime",
         }
+
+    @staticmethod
+    def match_suffix(target):
+        return target.suffix in CodesignExternal.FOLDER_EXTENSIONS
+
+    @staticmethod
+    def matchers():
+        return [
+            CodesignExternal.match_suffix
+        ]
 
     def cmd(self, shellcmd, *args, **kwds):
         """run system command"""

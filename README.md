@@ -18,7 +18,7 @@ The scripts are all written in straightforward pure python3 code without any dep
 
 - [shrink.py](shrink.py): recursively 'thins' a folder of fat binaries by dropping uneeded architectures from binaries within the folder. This is not max specific and can be used in any macOS folder which contains fat binaries (even if they are deeply nested).
 
-- [maxutils.py](maxutils.py): (under development) This script includes functionality from [builder/package.py](https://github.com/shakfu/py-js/tree/main/source/projects/py/builder) which is the custom script used to sign, notarize, and package the rather complex python3 externals in the [py-js project](https://github.com/shakfu/py-js/tree/main). The idea behind this script is provide a one-stop script to reduce, package, sign, and notarize Max Products. It will likely include functionality from other scripts in this repository (and eventually make them obsolete), and will have extensive test coverage.
+- [maxutils.py](maxutils.py): (under development) This script includes functionality from [builder/package.py](https://github.com/shakfu/py-js/tree/main/source/projects/py/builder) which is the custom script used to sign, notarize, and package the rather complex python3 externals in the [py-js project](https://github.com/shakfu/py-js). The idea behind this script is provide a one-stop script to reduce, package, sign, and notarize Max Products. It will likely include functionality from other scripts in this repository (and eventually make them obsolete), and will have extensive test coverage.
 
 ## standalone.py
 

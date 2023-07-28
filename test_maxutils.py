@@ -76,15 +76,18 @@ def test_max_product_manager_with_standalone(standalone):
     assert m.product
     assert isinstance(m.manager, maxutils.MaxStandaloneManager)
     assert m.manager.product
+    m.sign()
 
 def test_max_product_manager_with_package(package):
     m = maxutils.MaxProductManager(package)
     assert m.product
     assert isinstance(m.manager, maxutils.MaxPackageManager)
     assert m.manager.product
+    m.sign()
 
 def test_max_product_manager_with_external(external):
     m = maxutils.MaxProductManager(external)
     assert m.product
     assert isinstance(m.manager, maxutils.MaxExternalManager)
     assert m.manager.product
+    m.sign()
