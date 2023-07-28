@@ -34,7 +34,7 @@ import plistlib
 from pathlib import Path
 
 
-from typing import Optional
+from typing import Optional, cast
 
 
 DEBUG = False
@@ -224,15 +224,12 @@ class MaxProductManager(abc.ABC):
         dry_run=False,
     ):
         self.product = product
-        # self.variant, self.product_dmg = self.setup(variant)
         self.dev_id = dev_id or os.getenv(
             "DEV_ID", "-"
         )  # '-' fallback to ad-hoc signing
         self.keychain_profile = keychain_profile
         self.dry_run = dry_run
         self.entitlements = entitlements
-        # self.entitlements = entitlements or self.project.entitlements / "entitlements.plist"
-        # assert self.entitlements.exists(), f"not found: {self.entitlements}"
         self.log = logging.getLogger(__class__.__name__)
         self.cmd = ShellCmd(self.log)
 
@@ -288,6 +285,17 @@ class MaxProductManager(abc.ABC):
 class MaxStandaloneManager(MaxProductManager):
     """manage max standalones"""
 
+    def __init__(
+        self,
+        product: MaxStandalone,
+        dev_id: Optional[str] = None,
+        keychain_profile: Optional[str] = None,
+        entitlements: Optional[str] = None,
+        dry_run=False,
+    ):
+        super().__init__(product, dev_id, keychain_profile, entitlements, dry_run)
+        self.product = product
+
     def sign(self):
         """codesign standalone"""
         self.sign_folder(self.product.path)
@@ -308,9 +316,21 @@ class MaxStandaloneManager(MaxProductManager):
 class MaxPackageManager(MaxProductManager):
     """manage max packages"""
 
+    def __init__(
+        self,
+        product: MaxPackage,
+        dev_id: Optional[str] = None,
+        keychain_profile: Optional[str] = None,
+        entitlements: Optional[str] = None,
+        dry_run=False,
+    ):
+        super().__init__(product, dev_id, keychain_profile, entitlements, dry_run)
+        self.product = product
+
     def sign(self):
         """codesign package"""
-        self.sign_folder(self.product.path)
+        self.sign_folder(self.product.externals)
+        self.sign_folder(self.product.support)
 
     def package_as_dmg(self):
         """package product as .dmg"""
@@ -324,15 +344,21 @@ class MaxPackageManager(MaxProductManager):
     def staple_dmg(self):
         """staple .dmg"""
 
-    # def sign_package(self):
-    #     """"""
-    #     self.sign_folder(self.product.externals)
-    #     self.sign_folder(self.product.support)
-
 
 
 class MaxExternalManager(MaxProductManager):
     """manage max external"""
+
+    def __init__(
+        self,
+        product: MaxExternal,
+        dev_id: Optional[str] = None,
+        keychain_profile: Optional[str] = None,
+        entitlements: Optional[str] = None,
+        dry_run=False,
+    ):
+        super().__init__(product, dev_id, keychain_profile, entitlements, dry_run)
+        self.product = product
 
     def sign(self):
         """codesign external"""
@@ -1071,7 +1097,7 @@ def option_group(*options):
 class MetaCommander(type):
     """Metaclass to provide argparse boilerplate features to its instance class"""
 
-    def __new__(cls, classname, bases, classdict):
+    def __new__(mcs, classname, bases, classdict):
         subcmds = {}
         for name, func in list(classdict.items()):
             if name.startswith("do_"):
@@ -1085,7 +1111,7 @@ class MetaCommander(type):
                     subcmd["options"] = func.options
                 subcmds[name] = subcmd
         classdict["_argparse_subcmds"] = subcmds
-        return type.__new__(cls, classname, bases, classdict)
+        return type.__new__(mcs, classname, bases, classdict)
 
 
 class Commander(metaclass=MetaCommander):
