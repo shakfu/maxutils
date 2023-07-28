@@ -35,7 +35,7 @@ class Shrink:
             assert os.path.exists(path)
             self.path = pathlib.Path(path)
         except AssertionError:
-            self.log.critical(f"'{path}' does not exist.")
+            self.log.critical("'%s' does not exist.", path)
             sys.exit(1)
 
         try:
@@ -43,7 +43,8 @@ class Shrink:
             self.arch = arch_to_keep
         except AssertionError:
             self.log.critical(
-                f"{arch_to_keep} not accepted. Must be one of {self.ARCHES}")
+                "%s not accepted. Must be one of %s",
+                    arch_to_keep, self.ARCHES)
             sys.exit(1)
 
         self.arch = arch_to_keep

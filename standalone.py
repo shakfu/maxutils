@@ -4,7 +4,7 @@
 A cli tool to manage post-production tasks for max standalones.
 
 """
-# pylint: disable = R0201, R0913, R0902, C0103
+# pylint: disable = R0913, R0902, C0103
 
 import argparse
 import datetime
@@ -15,18 +15,20 @@ import plistlib
 import subprocess
 import sys
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
 try:
     import tqdm
 
     HAVE_PROGRESSBAR = True
-    progressbar = tqdm.tqdm
+    progressbar = tqdm.tqdm # type: ignore
 except ImportError:
     HAVE_PROGRESSBAR = False
-    progressbar = lambda x: x  # noop
+    def progressbar(x):
+        "no-op -- does nothing"
+        return x
 
-__all__ = ['Standalone']
+__all__ = ["Standalone"]
 
 # ----------------------------------------------------------------------------
 # TYPE ALIASES
@@ -56,14 +58,16 @@ CONFIG = {
         "com.apple.security.device.audio-input": True,
         # "com.apple.security.device.microphone": True,
         # "com.apple.security.app-sandbox": True,
-    }
+    },
 }
 
 # ----------------------------------------------------------------------------
 # LOGGING CONFIGURATION
 
-class CustomFormatter(logging.Formatter):
 
+class CustomFormatter(logging.Formatter):
+    """custom logging format
+    """
     white = "\x1b[97;20m"
     grey = "\x1b[38;20m"
     green = "\x1b[32;20m"
@@ -90,10 +94,7 @@ class CustomFormatter(logging.Formatter):
 
 handler = logging.StreamHandler()
 handler.setFormatter(CustomFormatter())
-logging.basicConfig(
-    level=logging.DEBUG if DEBUG else logging.INFO,
-    handlers=[handler]
-)
+logging.basicConfig(level=logging.DEBUG if DEBUG else logging.INFO, handlers=[handler])
 
 # ----------------------------------------------------------------------------
 # UTILITY FUNCTIONS
@@ -101,6 +102,7 @@ logging.basicConfig(
 
 # ----------------------------------------------------------------------------
 # CLASSES
+
 
 class Base:
     """helper mixin class"""
@@ -124,7 +126,9 @@ class Base:
 
     def notify(self, title: str, txt: str):
         """notify via macos, notifcation with title and text."""
-        self.cmd(f"""osascript -e 'display notification "{txt}" with title "{title}"'""")
+        self.cmd(
+            f"""osascript -e 'display notification "{txt}" with title "{title}"'"""
+        )
 
     def copy(self, src_path: str, dst_path: str):
         """recursively copy from src path to dst path."""
@@ -138,6 +142,7 @@ class Base:
         """
         self.log.info("zipping %s as %s", src, dst)
         self.cmd(f"ditto -c -k --keepParent '{src}' '{dst}'")
+
 
 class Generator(Base):
     """standalone generator class
@@ -156,7 +161,7 @@ class Generator(Base):
         """derives lower-case app name from standalone name <appname>.app"""
         return self.path.stem.lower()
 
-    def generate_entitlements(self, path: str = None) -> str:
+    def generate_entitlements(self, path: Optional[str] = None) -> str:
         """generates a default enttitelements.plist file"""
         if not path:
             path = f"{self.appname}-entitlements.plist"
@@ -247,7 +252,13 @@ class CodeSigner(Base):
         -> a-signed.zip
     """
 
-    def __init__(self, path: PathLike, dev_id: str, entitlements: str = None, packaging="zip"):
+    def __init__(
+        self,
+        path: PathLike,
+        dev_id: str,
+        entitlements: Optional[str] = None,
+        packaging="zip",
+    ):
         self.path = Path(path)
         self.dev_id = dev_id
         self.entitlements = entitlements
@@ -341,15 +352,14 @@ class CodeSigner(Base):
         if res.returncode != 0:
             self.log.critical(res.stderr)
 
-    def dmg(self, src: Path, dst: Path, dev_id: str, volname: str = None):
+    def dmg(self, src: Path, dst: Path, dev_id: str, volname: Optional[str] = None):
         """create a dmg archive.
 
         Expects an '.app' or '.pkg' param.
         """
         if not volname:
             volname = f"{src.stem}Installer"
-        assert src.suffix in [
-            ".app", ".pkg"], "Expects an '.app' or '.pkg' src param."
+        assert src.suffix in [".app", ".pkg"], "Expects an '.app' or '.pkg' src param."
         self.log.info("creating %s", dst)
         self.cmd(
             f"hdiutil create -volname '{volname}' -srcfolder '{src}' "
@@ -357,7 +367,8 @@ class CodeSigner(Base):
         )
         self.log.info("codesigning %s", dst)
         self.cmd(
-            f"codesign --deep --force --verify --verbose --sign 'Developer ID Application: {dev_id}' "
+            f"codesign --deep --force --verify --verbose "
+            f"--sign 'Developer ID Application: {dev_id}' "
             f"--options runtime '{dst}'"
         )
 
@@ -381,19 +392,23 @@ class CodeSigner(Base):
         self.sign_group("externals", "Contents/Resources/C74/**/*.{ext}")
         self.sign_group("frameworks", "Contents/Frameworks/**/*.{ext}")
         self.sign_runtime()
-        self.log.info("app codesigning DONE")        
+        self.log.info("app codesigning DONE")
         if self.packaging == "pkg":
-            self.log.info("converting signed {self.path} into pkg for pkg signing / notarization")
+            self.log.info(
+                "converting signed {self.path} into pkg for pkg signing / notarization"
+            )
             self.pkg(self.path, self.pkg_path, self.dev_id)
             return self.pkg_path
-        elif self.packaging == "dmg":
-            self.log.info("converting signed {self.path} into dmg for dmg signing / notarization")
+        if self.packaging == "dmg":
+            self.log.info(
+                "converting signed {self.path} into dmg for dmg signing / notarization"
+            )
             self.dmg(self.path, self.dmg_path, self.dev_id)
             return self.dmg_path
-        else:
-            self.log.info("zipping signed {self.path} for notarization")
-            self.zip(self.path, self.zip_path)
-            return self.zip_path
+        self.log.info("zipping signed {self.path} for notarization")
+        self.zip(self.path, self.zip_path)
+        return self.zip_path
+
 
 class Notarizer(Base):
     """standalone notarizing class
@@ -430,11 +445,23 @@ class Notarizer(Base):
         """notarize using altool (for xcode < 13)."""
         self.log.info("notarizing %s", self.path)
 
-        res = self.cmd_output([
-            "xcrun", "altool", "--notarize-app", "--file", str(self.path),
-            "-t", "osx", "-u", self.apple_id,  "-p", self.app_password,
-            "-primary-bundle-id", self.app_bundle_id
-        ])
+        res = self.cmd_output(
+            [
+                "xcrun",
+                "altool",
+                "--notarize-app",
+                "--file",
+                str(self.path),
+                "-t",
+                "osx",
+                "-u",
+                self.apple_id,
+                "-p",
+                self.app_password,
+                "-primary-bundle-id",
+                self.app_bundle_id,
+            ]
+        )
         if "No errors uploading" not in res:
             self.log.critical(res)
             sys.exit()
@@ -448,17 +475,17 @@ class Notarizer(Base):
         if self.path.suffix == ".pkg":
             self.log.info(".pkg installer notarized")
             return self.path
-        elif self.path.suffix == ".dmg":
+        if self.path.suffix == ".dmg":
             self.log.info(".dmg archive notarized")
             return self.path
-        else: # .zip
-            self.log.info("app notarized")
-            self.log.info("removing zip used for notarization")
-            self.cmd("rm {self.path}")
-            self.log.info(".app will be processed for stapling")
-            signed_app = self.path.parent / f"{self.path.stem}.app"
-            assert signed_app.exists(), "signed app not available"
-            return signed_app
+        # else .zip
+        self.log.info("app notarized")
+        self.log.info("removing zip used for notarization")
+        self.cmd("rm {self.path}")
+        self.log.info(".app will be processed for stapling")
+        signed_app = self.path.parent / f"{self.path.stem}.app"
+        assert signed_app.exists(), "signed app not available"
+        return signed_app
 
 
 class Stapler(Base):
@@ -492,8 +519,7 @@ class Distributor(Base):
 
     FORMATS = set(["app", "pkg", "dmg"])
 
-    def __init__(
-        self, path: PathLike, dev_id: str, version: str, arch: str):
+    def __init__(self, path: PathLike, dev_id: str, version: str, arch: str):
         self.path = Path(path)
         self.dev_id = dev_id
         self.version = version
@@ -518,15 +544,15 @@ class Distributor(Base):
         return Path(f"{self.release_name}.{self.path.suffix}")
 
     def package(self):
-        """package app.bundle or colder containing app.bundle with other related files."""
+        """package .app or folder containing .app w/ related files.
+        """
         suffix = self.path.suffix
         if suffix == ".app":
             self.zip(self.path, self.product)
         if suffix == ".pkg":
             self.zip(self.path, self.product)
         if suffix == ".dmg":
-            self.path.rename(self.path.parent /
-                             f"{self.release_name}.{suffix}")
+            self.path.rename(self.path.parent / f"{self.release_name}.{suffix}")
 
     def process(self):
         """final codesigned, notarized standalone packaging process."""
@@ -573,8 +599,9 @@ class Standalone(Base):
 
     def process_as_zip(self) -> PathLike:
         """zip automated process"""
-        processed = PreProcessor(self.path, self.arch,
-                                 self.remove_attrs, self.norm_perms).process()
+        processed = PreProcessor(
+            self.path, self.arch, self.remove_attrs, self.norm_perms
+        ).process()
         signed_zip = CodeSigner(processed, self.dev_id).process()
         output_dir = Notarizer(
             signed_zip, self.apple_id, self.app_password, self.app_bundle_id
@@ -583,8 +610,9 @@ class Standalone(Base):
 
     def process_as_pkg(self) -> PathLike:
         """pkg automated process"""
-        processed = PreProcessor(self.path, self.arch,
-                                 self.remove_attrs, self.norm_perms).process()
+        processed = PreProcessor(
+            self.path, self.arch, self.remove_attrs, self.norm_perms
+        ).process()
         signed_pkg = CodeSigner(processed, self.dev_id, packaging="pkg").process()
         output_dir = Notarizer(
             signed_pkg, self.apple_id, self.app_password, self.app_bundle_id
@@ -593,8 +621,9 @@ class Standalone(Base):
 
     def process_as_dmg(self) -> PathLike:
         """dmg automated process"""
-        processed = PreProcessor(self.path, self.arch,
-                                 self.remove_attrs, self.norm_perms).process()
+        processed = PreProcessor(
+            self.path, self.arch, self.remove_attrs, self.norm_perms
+        ).process()
         signed_dmg = CodeSigner(processed, self.dev_id, packaging="dmg").process()
         output_dir = Notarizer(
             signed_dmg, self.apple_id, self.app_password, self.app_bundle_id
@@ -640,6 +669,7 @@ def option(*args, **kwds):
 # arg decorator
 arg = option
 
+
 # combines option decorators
 def option_group(*options):
     """combines option decorators"""
@@ -655,7 +685,7 @@ def option_group(*options):
 class MetaCommander(type):
     """commandline metaclass"""
 
-    def __new__(cls, classname, bases, classdict):
+    def __new__(mcs, classname, bases, classdict):
         subcmds = {}
         for name, func in list(classdict.items()):
             if name.startswith("do_"):
@@ -669,7 +699,7 @@ class MetaCommander(type):
                     subcmd["options"] = func.options
                 subcmds[name] = subcmd
         classdict["_argparse_subcmds"] = subcmds
-        return type.__new__(cls, classname, bases, classdict)
+        return type.__new__(mcs, classname, bases, classdict)
 
 
 # ------------------------------------------------------------------------------
@@ -682,15 +712,19 @@ class Application(metaclass=MetaCommander):
 
     """
     name = 'standalone'
-    epilog = "workflow: generate -> preprocess -> codesign -> notarize -> staple -> package"
+    epilog = ("workflow: generate -> preprocess -> codesign "
+              "-> notarize -> staple -> package")
     version = '0.1'
     default_args = ['--help']
     _argparse_subcmds = {}
 
 
-    @option("--entitlements-plist", "-e", action="store_true", help="generate entitlements.plist")
-    @option("--config-json", "-c", action="store_true", help="generate sample config.json")
-    @option("--appname", type=str, default="app", help="appname of standalone")
+    @option("--entitlements-plist", "-e",
+            action="store_true", help="generate entitlements.plist")
+    @option("--config-json", "-c",
+            action="store_true", help="generate sample config.json")
+    @option("--appname", "-a",
+            type=str, default="app", help="appname of standalone")
     def do_generate(self, args):
         """generate standalone-related files."""
         gen = Generator(args.appname)
@@ -700,8 +734,10 @@ class Application(metaclass=MetaCommander):
             gen.generate_entitlements()
 
 
-    @option("--clean", "-c", action="store_true", help="clean app bundle before signing")
-    @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
+    @option("--clean", "-c",
+            action="store_true", help="clean app bundle before signing")
+    @option("--arch", "-a",
+            default="dual", help="set architecture of app (dual|arm64|x86_64)")
     @arg("path", type=str, help="path to standalone")
     def do_preprocess(self, args):
         """preprocess max standalone prior to codesigning."""
@@ -709,10 +745,14 @@ class Application(metaclass=MetaCommander):
         pre.process()
 
 
-    @option("--dry-run", action="store_true", help="run process without actually doing anything")
-    @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
-    @option("--entitlements", "-e", type=str, help="path to app-entitlements.plist")
-    @option("dev_id", type=str, help="Developer ID Application: <dev_id>")
+    @option("--dry-run", action="store_true",
+            help="run process without actually doing anything")
+    @option("--arch", "-a", default="dual",
+            help="set architecture of app (dual|arm64|x86_64)")
+    @option("--entitlements", "-e", type=str,
+            help="path to app-entitlements.plist")
+    @option("dev_id", type=str,
+            help="Developer ID Application: <dev_id>")
     @arg("path", type=str, help="path to standalone")
     def do_codesign(self, args):
         """codesign max standalone."""
@@ -735,9 +775,12 @@ class Application(metaclass=MetaCommander):
         stplr.process()
 
 
-    @option("--add-file", "-f", action="append", help="add a file to app distro package")
-    @option("--arch", "-a", default="dual", help="set architecture of app (dual|arm64|x86_64)")
-    @option("--version", "-v", type=str, help="path to app-entitlements.plist")
+    @option("--add-file", "-f", action="append",
+            help="add a file to app distro package")
+    @option("--arch", "-a", default="dual",
+            help="set architecture of app (dual|arm64|x86_64)")
+    @option("--version", "-v", type=str,
+            help="path to app-entitlements.plist")
     @arg("path", type=str, help="path to directory")
     def do_distribute(self, args):
         """package max standalone for distribution."""
@@ -805,4 +848,3 @@ if __name__ == '__main__':
     # b.log.critical("This is critical")
     # b.log.error("This is error time")
     # b.cmd("echo 'hello'")
-

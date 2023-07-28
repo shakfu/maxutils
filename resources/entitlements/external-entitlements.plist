@@ -2,20 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-        <!-- These are required for Max Standalones -->
 
-        <!-- This  is necessary for triggering apple-events. In addition to 
-        any use of  third party AppleScript objects, this may be necessary 
+        <!-- These are are probably required for Max Externals
+             Uncomment as required.
+        -->
+
+        <!-- This  is necessary for triggering apple-events. In addition to
+        any use of  third party AppleScript objects, this may be necessary
         for certain  VST/AU plugins and their particular authorization systems -->
-        <key>com.apple.security.automation.apple-events</key>
-        <true/>
+        <!-- <key>com.apple.security.automation.apple-events</key>
+        <true/> -->
 
-        <!-- Allows for using alternate locations for libraries as set 
+        <!-- Allows for using alternate locations for libraries as set
         by environment variables.-->
-        <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-        <true/>
+        <!-- <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+        <true/> -->
 
-        <!-- This entitlement allows for using JIT compiled code: e.g. CEF, 
+        <!-- This entitlement allows for using JIT compiled code: e.g. CEF,
         lua, Java, and Javascript objects could make use of this. -->
         <key>com.apple.security.cs.allow-jit</key>
         <true/>
@@ -32,8 +35,7 @@
         <true/>
 
         <!-- This is necessary to initialize the audio driver and open audio input. -->
-        <key>com.apple.security.device.audio-input</key>
-        <true/>
+        <!-- <key>com.apple.security.device.audio-input</key>
+        <true/> -->
 </dict>
 </plist>
-

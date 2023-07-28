@@ -77,12 +77,14 @@ ENTITLEMENTS = {
 }
 
 
-def get_var(x):
-    return sysconfig.get_config_var(x)
+def get_var(name):
+    """shortcut to obtain sysconfig variable"""
+    return sysconfig.get_config_var(name)
 
 
-def get_path(x):
-    return pathlib.Path(sysconfig.get_config_var(x))  # type: ignore
+def get_path(name):
+    """shortcut to obtain sysconfig variabe as Path"""
+    return pathlib.Path(sysconfig.get_config_var(name))  # type: ignore
 
 
 class MaxProduct(abc.ABC):
@@ -97,7 +99,7 @@ class MaxProduct(abc.ABC):
         # general info
         self.arch: str = platform.machine()
         self.system: str = platform.system().lower()
-        self.HOME: Path = Path.home()
+        self.home: Path = Path.home()
 
     def __str__(self):
         return f"<{self.__class__.__name__}:'{self.name}'>"
@@ -150,7 +152,7 @@ class MaxPackage(MaxProduct):
 
         self.package_name = self.name
         self.package = pathlib.Path(
-            f"{self.HOME}/Documents/Max 8/Packages/{self.package_name}"
+            f"{self.home}/Documents/Max 8/Packages/{self.package_name}"
         )
         self.package_dirs = [
             "docs",
@@ -191,7 +193,7 @@ class MaxPackage(MaxProduct):
             self.build_externals = self.externals
 
         else:  # is copied to {package}
-            self.build = self.HOME / ".build_maxutils"
+            self.build = self.home / ".build_maxutils"
             self.build_externals = self.build / "externals"
 
         self.build_cache = self.build / "build.ini"
@@ -200,7 +202,7 @@ class MaxPackage(MaxProduct):
         self.build_lib = self.build / "lib"
 
         # collect stapled and zipped .dmgs in release directory
-        self.release_dir = self.HOME / "Downloads" / "MAX_PRODUCTS_RELEASE"
+        self.release_dir = self.home / "Downloads" / "MAX_PRODUCTS_RELEASE"
 
         # settings
         self.mac_dep_target = "10.13"
@@ -322,6 +324,12 @@ class MaxPackageManager(MaxProductManager):
     def staple_dmg(self):
         """staple .dmg"""
 
+    # def sign_package(self):
+    #     """"""
+    #     self.sign_folder(self.product.externals)
+    #     self.sign_folder(self.product.support)
+
+
 
 class MaxExternalManager(MaxProductManager):
     """manage max external"""
@@ -368,16 +376,17 @@ class MaxReleaseManager:
         self.entitlements = entitlements
 
     def get_product(self) -> MaxProduct:
+        """get product type from path suffix"""
         if self.path.suffix in [".mxo", ".mxe64", ".mxe"]:
             return MaxExternal(self.path)
-        elif self.path.suffix in [".app", ".exe"]:
+        if self.path.suffix in [".app", ".exe"]:
             return MaxStandalone(self.path)
-        elif self.path.is_dir():
+        if self.path.is_dir():
             return MaxPackage(self.path)
-        else:
-            raise TypeError("cannot find product")
+        raise TypeError("cannot find product")
 
     def get_product_manager(self) -> MaxProductManager:
+        """get product manager instance from product type."""
         return {
             "MaxStandalone": MaxStandaloneManager,
             "MaxExternal": MaxExternalManager,
@@ -421,12 +430,12 @@ class Project:
         self.root: pathlib.Path = pathlib.Path(root) if root else pathlib.Path.cwd()
         self.arch = platform.machine()
         self.system = platform.system()
-        self.HOME = pathlib.Path.home()
+        self.home = pathlib.Path.home()
 
         # environmental vars
         self.package_name = self.name
         self.package = pathlib.Path(
-            f"{self.HOME}/Documents/Max 8/Packages/{self.package_name}"
+            f"{self.home}/Documents/Max 8/Packages/{self.package_name}"
         )
         self.package_dirs = [
             "docs",
@@ -467,7 +476,7 @@ class Project:
             self.build_externals = self.externals
 
         else:  # is copied to {package}
-            self.build = self.HOME / ".build_maxutils"
+            self.build = self.home / ".build_maxutils"
             self.build_externals = self.build / "externals"
 
         self.build_cache = self.build / "build.ini"
@@ -476,7 +485,7 @@ class Project:
         self.build_lib = self.build / "lib"
 
         # collect stapled and zipped .dmgs in release directory
-        self.release_dir = self.HOME / "Downloads" / "MAX_PRODUCTS_RELEASE"
+        self.release_dir = self.home / "Downloads" / "MAX_PRODUCTS_RELEASE"
 
         # python related
         self.py_version = get_var("py_version")
@@ -503,7 +512,7 @@ class Project:
             "support": str(self.support),
             "externals": str(self.externals),
             "external": str(self.external),
-            "HOME": self.HOME,
+            "home": self.home,
             "package_name": self.package_name,
             "package": str(self.package),
             "package_dirs": self.package_dirs,
@@ -611,7 +620,7 @@ class ShellCmd:
         """Remove file or folder."""
         if path.is_dir():
             self.log.info("remove folder: %s", path)
-            shutil.rmtree(path, ignore_errors=(not DEBUG))
+            shutil.rmtree(path, ignore_errors=not DEBUG)
         else:
             self.log.info("remove file: %s", path)
             try:
