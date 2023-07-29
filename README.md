@@ -14,7 +14,11 @@ The types of products targetted by the scripts are:
 
 ## Script Functions
 
-When releasing Max products the following functions are typically needed:
+When building and releasing Max products the following functions may be needed:
+
+- **Bundling**: bundling dependencies together with the product.
+
+- **Fixing**: re-writing bundled dependency links to ensure that the bundle is relocatable.
 
 - **Size Reduction**: reduce the product's size by removing extranous parts or architectures.
 

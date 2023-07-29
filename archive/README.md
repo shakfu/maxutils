@@ -15,3 +15,11 @@ I still think there are merits to a monolithic single class approach compared to
 This was the first version of the `shrink.py` script which was written before I was informed about the `ditto --arch <src> <dst>` by @SOURCE-AUDIO in the cycling74 forums.
 
 It's definitely inferior to the current version, not sure why it is being retained.
+
+## fixer.py
+
+Buggy script containing dependency fixing functions which needs to be restructured
+
+## bundler.py
+
+Half-complete macos bundling script
