@@ -4,7 +4,11 @@ import shutil
 
 import pytest
 
-import maxutils
+from ..core import (
+    MaxStandalone, MaxExternal, MaxPackage,
+    MaxStandaloneManager, MaxExternalManager, MaxPackageManager,
+    MaxReleaseManager,
+)
 
 FIXTURE_DIR = pathlib.Path('fixtures')
 
@@ -24,7 +28,7 @@ def standalone():
 
 @pytest.fixture
 def max_standalone(standalone):
-    yield maxutils.MaxStandalone(standalone, '0.0.1')
+    yield MaxStandalone(standalone, '0.0.1')
 
 @pytest.fixture
 def external():
@@ -37,7 +41,7 @@ def external():
 
 @pytest.fixture
 def max_external(external):
-    yield maxutils.MaxExternal(external, '0.0.1')
+    yield MaxExternal(external, '0.0.1')
 
 @pytest.fixture
 def package():
@@ -50,7 +54,7 @@ def package():
 
 @pytest.fixture
 def max_package(package):
-    yield maxutils.MaxPackage(package, '0.0.1')
+    yield MaxPackage(package, '0.0.1')
 
 def test_max_standalone_init(max_standalone):
     s = max_standalone
@@ -69,43 +73,43 @@ def test_max_package_init(max_package):
     assert p.version == '0.0.1'
 
 def test_max_standalone_manager(max_standalone):
-    m = maxutils.MaxStandaloneManager(max_standalone)
+    m = MaxStandaloneManager(max_standalone)
     assert m.product
 
 def test_max_package_manager(max_package):
-    m = maxutils.MaxPackageManager(max_package)
+    m = MaxPackageManager(max_package)
     assert m.product
 
 def test_max_external_manager(max_external):
-    m = maxutils.MaxExternalManager(max_external)
+    m = MaxExternalManager(max_external)
     assert m.product
 
 def test_max_release_manager_with_standalone(standalone):
-    m = maxutils.MaxReleaseManager(standalone)
+    m = MaxReleaseManager(standalone)
     assert m.product
-    assert isinstance(m.manager, maxutils.MaxStandaloneManager)
+    assert isinstance(m.manager, MaxStandaloneManager)
     assert m.manager.product
 
 def test_max_release_manager_with_package(package):
-    m = maxutils.MaxReleaseManager(package)
+    m = MaxReleaseManager(package)
     assert m.product
-    assert isinstance(m.manager, maxutils.MaxPackageManager)
+    assert isinstance(m.manager, MaxPackageManager)
     assert m.manager.product
 
 def test_max_release_manager_with_external(external):
-    m = maxutils.MaxReleaseManager(external)
+    m = MaxReleaseManager(external)
     assert m.product
-    assert isinstance(m.manager, maxutils.MaxExternalManager)
+    assert isinstance(m.manager, MaxExternalManager)
     assert m.manager.product
 
 def test_max_release_manager_with_standalone_sign(standalone):
-    m = maxutils.MaxReleaseManager(standalone)
+    m = MaxReleaseManager(standalone)
     m.sign()
 
 def test_max_release_manager_with_package_sign(package):
-    m = maxutils.MaxReleaseManager(package)
+    m = MaxReleaseManager(package)
     m.sign()
 
 def test_max_release_manager_with_external_sign(external):
-    m = maxutils.MaxReleaseManager(external)
+    m = MaxReleaseManager(external)
     m.sign()

@@ -19,20 +19,20 @@ MaxReleaseManager(path, version=None)
         MaxPackageManager(product)
 """
 import abc
-import argparse
 import configparser
 import logging
 import os
 import pathlib
 import platform
-import shutil
 import subprocess
 import sysconfig
 import zipfile
 import plistlib
 from pathlib import Path
-
 from typing import Optional
+
+from .shell import ShellCmd
+from .sign import CodesignExternal
 
 DEBUG = False
 
@@ -212,7 +212,6 @@ class MaxPackage(MaxProduct):
 
         # collect stapled and zipped .dmgs in release directory
         self.release_dir = self.home / "Downloads" / "MAX_PRODUCTS_RELEASE"
-
 
 
 class MaxProductManager(abc.ABC):
@@ -518,254 +517,4 @@ class MaxReleaseManager:
         self.manager.staple_dmg()
 
 
-class ShellCmd:
-    """Provides platform agnostic file/folder handling."""
 
-    def __init__(self, log):
-        self.log = log
-
-    def cmd(self, shellcmd, *args, **kwargs):
-        """Run shell command with args and keywords"""
-        _cmd = shellcmd.format(*args, **kwargs)
-        self.log.info(_cmd)
-        os.system(_cmd)
-
-    __call__ = cmd
-
-    def chdir(self, path):
-        """Change current workding directory to path"""
-        self.log.info("changing working dir to: %s", path)
-        os.chdir(path)
-
-    def chmod(self, path, perm=0o777):
-        """Change permission of file"""
-        self.log.info("change permission of %s to %s", path, perm)
-        os.chmod(path, perm)
-
-    def makedirs(self, path, mode=511, exist_ok=False):
-        """Recursive directory creation function"""
-        self.log.info("making directory: %s", path)
-        os.makedirs(path, mode, exist_ok)
-
-    def move(self, src, dst):
-        """Move from src path to dst path."""
-        self.log.info("move path %s to %s", src, dst)
-        shutil.move(src, dst)
-
-    def copy(self, src: pathlib.Path, dst: pathlib.Path):
-        """copy file or folders -- tries to be behave like `cp -rf`"""
-        self.log.info("copy %s to %s", src, dst)
-        src, dst = pathlib.Path(src), pathlib.Path(dst)
-        if dst.exists():
-            dst = dst / src.name
-        if src.is_dir():
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
-
-    def remove(self, path: Path):
-        """Remove file or folder."""
-        if path.is_dir():
-            self.log.info("remove folder: %s", path)
-            shutil.rmtree(path, ignore_errors=not DEBUG)
-        else:
-            self.log.info("remove file: %s", path)
-            try:
-                # path.unlink(missing_ok=True)
-                path.unlink()
-            except FileNotFoundError:
-                self.log.warning("file not found: %s", path)
-
-    def install_name_tool(self, src, dst, mode="id"):
-        """change dynamic shared library install names"""
-        _cmd = f"install_name_tool -{mode} {src} {dst}"
-        self.log.info(_cmd)
-        self.cmd(_cmd)
-
-
-class CodesignExternal:
-    """Recursively codesign an external."""
-
-    FILE_EXTENSIONS = [".so", ".dylib"]
-    FOLDER_EXTENSIONS = [".mxo", ".framework", ".app", ".bundle"]
-
-    def __init__(
-        self,
-        path: str | Path,
-        dev_id: Optional[str] = None,
-        entitlements: Optional[str] = None,
-    ):
-        self.path = pathlib.Path(path)
-        if dev_id not in [None, "-"]:
-            self.authority = f"Developer ID Application: {dev_id}"
-        else:
-            self.authority = None
-        self.entitlements = entitlements
-        self.targets = argparse.Namespace(**{
-            'runtimes': set(),
-            'internals': set(),
-            'frameworks': set(),
-            'apps': set(),
-        })
-        self.log = logging.getLogger(self.__class__.__name__)
-        # self.cmd = ShellCmd(self.log)
-        self._cmd_codesign = [
-            "codesign",
-            "--sign",
-            repr(self.authority) if self.authority else "-",
-            "--timestamp",
-            "--deep",
-            "--force",
-        ]
-
-        self.FILE_PATTERNS = {
-            "pattern1": "runtime",
-            "pattern2": "runtime",
-            "pattern3": "runtime",
-        }
-
-    @staticmethod
-    def match_suffix(target: Path):
-        """check if target's suffix is in folder extensions folder"""
-        return target.suffix in CodesignExternal.FOLDER_EXTENSIONS
-
-    @staticmethod
-    def matchers():
-        """list of matcher functions"""
-        return [CodesignExternal.match_suffix]
-
-    def cmd(self, shellcmd, *args, **kwds):
-        """run system command"""
-        syscmd = shellcmd.format(*args, **kwds)
-        self.log.debug(syscmd)
-        os.system(syscmd)
-
-    def cmd_check(self, arglist):
-        """capture and check shell _cmd output."""
-        res = subprocess.run(
-            arglist,
-            capture_output=True,
-            encoding="utf8",
-            check=True,
-        )
-        if res.returncode != 0:
-            self.log.critical(res.stderr)
-        else:
-            self.log.debug(" ".join(["DONE"] + arglist))
-        return res
-
-    def is_binary(self, path):
-        """returns True if file is a binary file."""
-        txt = str(self.cmd_check(["file", "-b", str(path)]))
-        if txt:
-            return "binary" in txt.split()
-        return False
-
-    def verify(self, path):
-        """verifies codesign of path"""
-        self.cmd(f"codesign --verify --verbose {path}")
-
-    def section(self, *args):
-        """display section"""
-        print()
-        print("-" * 79)
-        print(*args)
-
-    def collect(self):
-        """build up a list of target binaries"""
-        for root, folders, files in os.walk(self.path):
-            for fname in files:
-                path = pathlib.Path(root) / fname
-                for pattern in self.FILE_PATTERNS:
-                    if fname == pattern:
-                        if self.FILE_PATTERNS[fname] == "runtime":
-                            self.targets.runtimes.add(path)
-                        else:
-                            self.targets.internals.add(path)
-                for _ in self.FILE_EXTENSIONS:
-                    if path.suffix not in self.FILE_EXTENSIONS:
-                        continue
-                    if path.is_symlink():
-                        continue
-                    if path.suffix in self.FILE_EXTENSIONS:
-                        self.log.debug("added binary: %s", path)
-                        self.targets.internals.add(path)
-            for folder in folders:
-                path = pathlib.Path(root) / folder
-                for _ in self.FOLDER_EXTENSIONS:
-                    if path.suffix not in self.FOLDER_EXTENSIONS:
-                        continue
-                    if path.is_symlink():
-                        continue
-                    if path.suffix in self.FOLDER_EXTENSIONS:
-                        self.log.debug("added bundle: %s", path)
-                        if path.suffix == ".framework":
-                            self.targets.frameworks.add(path)
-                        elif path.suffix == ".app":
-                            self.targets.apps.add(path)
-                        else:
-                            self.targets.internals.add(path)
-
-    def sign_internal_binary(self, path: pathlib.Path):
-        """sign internal binaries"""
-        codesign_cmd = " ".join(self._cmd_codesign + [str(path)])
-        self.cmd(codesign_cmd)
-        # self.cmd_check(self._cmd_codesign + [str(path)])
-
-    def sign_runtime(self, path=None):
-        """sign top-level bundle runtime"""
-        if not path:
-            path = self.path
-        codesign_runtime = " ".join(
-            self._cmd_codesign
-            + [
-                "--options",
-                "runtime",
-                "--entitlements",
-                str(self.entitlements),
-                str(path),
-            ]
-        )
-        self.cmd(codesign_runtime)
-        # self.cmd_check(self._cmd_codesign + [
-        #      "--options", "runtime",
-        #      "--entitlements", str(self.entitlements),
-        #      str(self.path)
-        # ])
-
-    def process(self):
-        """main process to recursive sign."""
-
-        self.section("PROCESSING:", self.path)
-
-        self.section("COLLECTING...")
-        if not self.targets.internals:
-            self.collect()
-
-        self.section("SIGNING INTERNAL TARGETS")
-        for path in self.targets.internals:
-            self.sign_internal_binary(path)
-
-        self.section("SIGNING APPS")
-        for path in self.targets.apps:
-            macos_path = path / "Contents" / "MacOS"
-            for exe in macos_path.iterdir():
-                self.sign_internal_binary(exe)
-            self.sign_runtime(path)
-
-        self.section("SIGNING OTHER RUNTIMES")
-        for path in self.targets.runtimes:
-            self.sign_runtime(path)
-
-        self.section("SIGNING FRAMEWORKS")
-        for path in self.targets.frameworks:
-            self.sign_internal_binary(path)
-
-        self.section("SIGNING MAIN RUNTIME")
-        self.sign_runtime()
-
-        self.section("VERIFYING SIGNATURE")
-        self.verify(self.path)
-
-        print()
-        self.log.info("DONE!")

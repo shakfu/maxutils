@@ -36,7 +36,7 @@ Shell scripts should be bash compatible and should pass 100% of [shellcheck](htt
 
 ## The Scripts
 
-The scripts are all written in pure python3 code without any dependencies outside of the python3 standard library.
+The scripts are in the `scripts` directory and are most;y written in bash or in pure python3 code without any dependencies outside of the python3 standard library.
 
 - [notarize.sh](notarize.sh): a bash script for manual codesigning and notarization on macOS, which requires some environmental variables to be set: `DEV_ID`, `APP_PASS`, `APPLE_ID` and `ENTITLEMENTS` (optionally).
 
@@ -44,4 +44,6 @@ The scripts are all written in pure python3 code without any dependencies outsid
 
 - [shrink.py](shrink.py): recursively 'thins' a folder of fat binaries by dropping uneeded architectures from binaries within the folder. This is not max specific and can be used in any macOS folder which contains fat binaries (even if they are deeply nested).
 
-- [maxutils.py](maxutils.py): (under development) This script includes functionality from [builder/package.py](https://github.com/shakfu/py-js/tree/main/source/projects/py/builder) which is the custom script used to sign, notarize, and package the rather complex python3 externals in the [py-js project](https://github.com/shakfu/py-js). The idea behind this script is provide a one-stop script to reduce, package, sign, and notarize Max Products. It will likely include functionality from other scripts in this repository and will have extensive test coverage.
+## maxutils: a python package of max utilities
+
+Since it was observed that a number of the scripts kept re-inventing the wheel, there is a (grand unification) project, currently called `maxutils`, to refactor as much as possible and create a unified python package which will have an argparse-based interface. This project under development and still not functional.
