@@ -11,7 +11,7 @@ class ShellCmd:
     def __init__(self, log):
         self.log = log
 
-    def cmd(self, shellcmd, *args, **kwargs):
+    def cmd(self, shellcmd: str, *args, **kwargs):
         """Run shell command with args and keywords"""
         _cmd = shellcmd.format(*args, **kwargs)
         self.log.info(_cmd)
@@ -38,27 +38,27 @@ class ShellCmd:
             self.log.debug(" ".join(["DONE"] + arglist))
         return str(res)
 
-    def chdir(self, path):
+    def chdir(self, path: Path | str):
         """Change current workding directory to path"""
         self.log.info("changing working dir to: %s", path)
         os.chdir(path)
 
-    def chmod(self, path, perm=0o777):
+    def chmod(self, path: Path | str, perm: int = 0o777):
         """Change permission of file"""
         self.log.info("change permission of %s to %s", path, perm)
         os.chmod(path, perm)
 
-    def makedirs(self, path, mode=511, exist_ok=False):
+    def makedirs(self, path: Path | str, mode: int = 511, exist_ok: bool = False):
         """Recursive directory creation function"""
         self.log.info("making directory: %s", path)
         os.makedirs(path, mode, exist_ok)
 
-    def move(self, src, dst):
+    def move(self, src: Path | str, dst: Path | str):
         """Move from src path to dst path."""
         self.log.info("move path %s to %s", src, dst)
         shutil.move(src, dst)
 
-    def copy(self, src: Path, dst: Path):
+    def copy(self, src: Path | str, dst: Path | str):
         """copy file or folders -- tries to be behave like `cp -rf`"""
         self.log.info("copy %s to %s", src, dst)
         src, dst = Path(src), Path(dst)
@@ -69,8 +69,9 @@ class ShellCmd:
         else:
             shutil.copy2(src, dst)
 
-    def remove(self, path: Path):
+    def remove(self, path: Path | str):
         """Remove file or folder."""
+        path = Path(path)
         if path.is_dir():
             self.log.info("remove folder: %s", path)
             shutil.rmtree(path, ignore_errors=not DEBUG)
@@ -87,30 +88,30 @@ class ShellCmd:
 class MacShellCmd(ShellCmd):
     """macos-platform shellcmd subclass"""
 
-    def copy(self, src_path: str, dst_path: str):
+    def copy(self, src_path: Path | str, dst_path: Path | str):
         """recursively copy from src path to dst path."""
         self.log.info("copying: %s to %s", src_path, dst_path)
         self.cmd(f"ditto '{src_path}' '{dst_path}'")
 
-    def install_name_tool(self, src, dst, mode="id"):
+    def install_name_tool(self, src: Path | str, dst: Path | str, mode: str = "id"):
         """change dynamic shared library install names"""
         _cmd = f"install_name_tool -{mode} {src} {dst}"
         self.log.info(_cmd)
         self.cmd(_cmd)
 
-    def install_name_tool_id(self, new_id, target):
+    def install_name_tool_id(self, new_id: str, target: Path | str):
         """change dynamic shared library install names"""
         _cmd = f"install_name_tool -id '{new_id}' '{target}'"
         self.log.info(_cmd)
         self.cmd(_cmd)
 
-    def install_name_tool_change(self, src, dst, target):
+    def install_name_tool_change(self, src: str, dst: str, target: Path | str):
         """change dependency reference"""
         _cmd = f"install_name_tool -change '{src}' '{dst}' '{target}'"
         self.log.info(_cmd)
         self.cmd(_cmd)
 
-    def install_name_tool_add_rpath(self, rpath, target):
+    def install_name_tool_add_rpath(self, rpath: str, target: Path | str):
         """change dependency reference"""
         _cmd = f"install_name_tool -add_rpath '{rpath}' '{target}'"
         self.log.info(_cmd)
@@ -122,7 +123,7 @@ class MacShellCmd(ShellCmd):
             f"""osascript -e 'display notification "{txt}" with title "{title}"'"""
         )
 
-    def zip(self, src: Path, dst: Path):
+    def zip(self, src: Path | str, dst: Path | str):
         """create a zip archive of src path at dst path.
 
         Expects a folder 'src' parameter.

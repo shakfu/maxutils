@@ -6,6 +6,7 @@ import os
 
 from .shell import MacShellCmd as ShellCmd
 
+
 class CodesignExternal:
     """Recursively codesign an external."""
 
@@ -15,21 +16,24 @@ class CodesignExternal:
     def __init__(
         self,
         path: str | Path,
-        dev_id: Optional[str] = None,
+        dev_id: str = "-",
         entitlements: Optional[str] = None,
     ):
         self.path = Path(path)
-        if dev_id not in [None, "-"]:
-            self.authority = f"Developer ID Application: {dev_id}"
-        else:
-            self.authority = None
+        self.authority: Optional[str] = (
+            f"Developer ID Application: {dev_id}"
+            if (dev_id and dev_id != "-")
+            else None
+        )
         self.entitlements = entitlements
-        self.targets = argparse.Namespace(**{
-            'runtimes': set(),
-            'internals': set(),
-            'frameworks': set(),
-            'apps': set(),
-        })
+        self.targets = argparse.Namespace(
+            **{
+                "runtimes": set(),
+                "internals": set(),
+                "frameworks": set(),
+                "apps": set(),
+            }
+        )
         self.log = logging.getLogger(self.__class__.__name__)
         self.cmd = ShellCmd(self.log)
         self._cmd_codesign = [

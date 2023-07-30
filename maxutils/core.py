@@ -234,7 +234,7 @@ class MaxProductManager(abc.ABC):
         )  # '-' fallback to ad-hoc signing
         self.keychain_profile = keychain_profile
         self.entitlements = entitlements
-        self.log = logging.getLogger(__class__.__name__)
+        self.log = logging.getLogger(self.__class__.__name__)
         self.cmd = ShellCmd(self.log)
 
     def gen_entitlements(self, destination_folder, use_defaults=True, **kwds):

@@ -52,10 +52,10 @@ class ExternalFixer:
         assert self.is_valid(self.path)
         self.log = logging.getLogger(self.__class__.__name__)
         self.cmd = ShellCmd(self.log)
-        self.references = []
-        self.dependencies = []
-        self.install_names = {}
-        self.dep_list = []
+        self.references: list[str] = []
+        self.dependencies: list[str] = []
+        self.install_names: dict[str, set[tuple[str, str]]] = {}
+        self.dep_list: list[tuple[str, str]] = []
 
     @property
     def dest_dir_libs(self) -> list[Path]:
@@ -135,7 +135,9 @@ class ExternalFixer:
         """process dependencies"""
         for dep in self.dependencies:
             _, dep_filename = os.path.split(dep)
-            self.dep_list.append([dep, f"@rpath/{dep_filename}"])
+            self.dep_list.append(
+                (dep, f"@rpath/{dep_filename}")
+            )
 
     def copy_dependencies(self):
         """copy dependencies"""

@@ -13,20 +13,9 @@ import plistlib
 import subprocess
 import sys
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, Any
 
 from .shell import MacShellCmd as ShellCmd
-
-try:
-    import tqdm
-
-    HAVE_PROGRESSBAR = True
-    progressbar = tqdm.tqdm # type: ignore
-except ImportError:
-    HAVE_PROGRESSBAR = False
-    def progressbar(x):
-        "no-op -- does nothing"
-        return x
 
 __all__ = ["Standalone"]
 
@@ -40,7 +29,7 @@ PathLike = Union[str, Path]
 
 DEBUG = True
 
-CONFIG = {
+CONFIG: dict[str, Any] = {
     "standalone": "Groovin.app",
     "arch": "dual",
     "app_version": "0.1.2",
@@ -225,7 +214,7 @@ class CodeSigner:
         self,
         path: PathLike,
         dev_id: str,
-        entitlements: Optional[str] = None,
+        entitlements: Optional[str | Path] = None,
         packaging="zip",
     ):
         self.path = Path(path)
@@ -294,9 +283,8 @@ class CodeSigner:
 
         self.log.info("%s : %s found", category, len(resources))
 
-        for resource in progressbar(resources):
-            if not HAVE_PROGRESSBAR:
-                self.log.info("%s: %s", category, resource)
+        for resource in resources:
+            self.log.info("%s: %s", category, resource)
             res = subprocess.run(
                 self._cmd_codesign + ["-f", resource],
                 capture_output=True,
