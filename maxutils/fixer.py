@@ -14,14 +14,12 @@ from argparse import Namespace
 from .shell import MacShellCmd as ShellCmd
 
 # from .config import LOG_FORMAT, LOG_LEVEL
-# from .shell import ShellCmd
 
 DEBUG = False
 LOG_LEVEL = logging.DEBUG if DEBUG else logging.INFO
 LOG_FORMAT = "%(relativeCreated)-4d %(levelname)-5s: %(name)-10s %(message)s"
 
 logging.basicConfig(format=LOG_FORMAT, level=LOG_LEVEL)
-
 
 # ----------------------------------------------------------------------------
 # Utility Classes
@@ -43,21 +41,17 @@ class ExternalFixer:
         backref: Optional[str] = None,
     ):
         self.path = Path(path)
-        self.log = logging.getLogger(self.__class__.__name__)
-        self.cmd = ShellCmd(self.log)
-        # self.external = Namespace(**{
-        #     'contents':  self.path / "Contents",
-        #     'frameworks': self.contents / "Frameworks",
-        #     'resources': self.contents / "Resources",
-        #     'executable': self.contents / "MacOS" / self.path.stem
-        # })
-        self.contents = self.path / "Contents"
-        self.frameworks = self.contents / "Frameworks"
-        self.resources = self.contents / "Resources"
-        self.target = self.contents / "MacOS" / self.path.stem
-        self.dest_dir = Path(dest_dir) if dest_dir else self.frameworks
+        self.external = Namespace(**{
+            'contents':  self.path / "Contents",
+            'frameworks': self.path / "Contents" / "Frameworks",
+            'resources': self.path / "Contents" / "Resources",
+            'executable': self.path / "Contents" / "MacOS" / self.path.stem
+        })
+        self.dest_dir = Path(dest_dir) if dest_dir else self.external.frameworks
         self.backref = backref or "@loader_path/../Frameworks"
         assert self.is_valid(self.path)
+        self.log = logging.getLogger(self.__class__.__name__)
+        self.cmd = ShellCmd(self.log)
         self.references = []
         self.dependencies = []
         self.install_names = {}
@@ -71,24 +65,24 @@ class ExternalFixer:
     @property
     def binaries(self) -> list[Path]:
         """list of all signable binaries in external"""
-        return self.dest_dir_libs + [self.target]
+        return self.dest_dir_libs + [self.external.executable]
 
     def is_valid(self, path: Path) -> bool:
         """check if external is valid bundle"""
         return all(
             [
                 path.suffix == ".mxo",
-                self.contents.exists(),
-                self.target.exists(),
+                self.external.contents.exists(),
+                self.external.executable.exists(),
             ]
         )
 
     def process(self):
         """process external"""
-        self.get_references()  # immediate non-system dependencies
+        self.get_references()       # immediate non-system dependencies
         self.get_all_dependencies()
         self.process_dependencies()
-        self.copy_dependencies()  # copy dependenciess to dest folder in external
+        self.copy_dependencies()    # copy dependenciess to dest folder in external
         self.change_libs_install_names()
         self.change_exec_install_names()
         self.fix_broken_signatures()
@@ -100,7 +94,7 @@ class ExternalFixer:
         or it will fail to run
         """
         self.references = []  # reset references
-        result = subprocess.check_output(["otool", "-L", self.target])
+        result = subprocess.check_output(["otool", "-L", self.external.executable])
         lines = [line.decode("utf-8").strip() for line in result.splitlines()]
         for line in lines:
             match = re.match(r"\s*(\S+)\s*\(compatibility version .+\)$", line)
@@ -177,7 +171,7 @@ class ExternalFixer:
 
     def change_exec_install_names(self):
         """change external executable install names"""
-        result = subprocess.check_output(["otool", "-L", self.target])
+        result = subprocess.check_output(["otool", "-L", self.external.executable])
         entries = [line.decode("utf-8").strip() for line in result.splitlines()]
         for entry in entries:
             match = re.match(r"\s*(\S+)\s*\(compatibility version .+\)$", entry)
@@ -191,14 +185,13 @@ class ExternalFixer:
                     dep_path, dep_filename = os.path.split(path)
 
                     dest = os.path.join(self.backref, dep_filename)
-                    cmdline = ["install_name_tool", "-change", path, dest, self.target]
+                    cmdline = ["install_name_tool", "-change", path, dest, self.external.executable]
                     subprocess.call(cmdline)
 
     def fix_broken_signatures(self):
         """
-        Re-sign the binaries and libraries that were relocatablized with ad-hoc
-        signatures to avoid them having invalid signatures and to allow them to
-        run on Apple Silicon
+        Re-sign the binaries and libraries that were relocated with ad-hoc
+        signatures to avoid them having invalid signatures.
         """
         _codesign_cmd = [
             "/usr/bin/codesign",
@@ -213,20 +206,6 @@ class ExternalFixer:
             cmd = _codesign_cmd + [pathname]
             subprocess.check_call(cmd)
 
-    def fix_package_dylib(self, dylib: Path | str):
-        """Change id of a shared library to package's 'support' folder"""
-        dylib = Path(dylib)
-        self.cmd.chmod(dylib)
-        self.cmd.install_name_tool_id(
-            f"@loader_path/../../../../support/libs/{dylib.name}",
-            dylib,
-        )
-
-    def fix_external_dylib(self, dylib: Path | str):
-        """Change id of a shared library to external's 'Resources' folder"""
-        dylib = Path(dylib)
-        self.cmd.chmod(dylib)
-        self.cmd.install_name_tool_id(f"@loader_path/../Resources/libs/{dylib.name}", dylib)
 
     def is_valid_path(self, dep_path: Path | str) -> bool:
         """returns true if path references a relocatable local dependency."""
@@ -239,16 +218,31 @@ class ExternalFixer:
             or dep_path.startswith("/tmp/")
         )
 
-    def target_is_executable(self, target: Path | str) -> bool:
-        """returns true if target is an executable."""
-        target = Path(target)
-        return (
-            target.is_file()
-            and os.access(target, os.X_OK)
-            and target.suffix != ".dylib"
-        )
+    # def fix_package_dylib(self, dylib: Path | str):
+    #     """Change id of a shared library to package's 'support' folder"""
+    #     dylib = Path(dylib)
+    #     self.cmd.chmod(dylib)
+    #     self.cmd.install_name_tool_id(
+    #         f"@loader_path/../../../../support/libs/{dylib.name}",
+    #         dylib,
+    #     )
 
-    def target_is_dylib(self, target: Path | str) -> bool:
-        """target is a dylib"""
-        target = Path(target)
-        return target.is_file() and target.suffix == ".dylib"
+    # def fix_external_dylib(self, dylib: Path | str):
+    #     """Change id of a shared library to external's 'Resources' folder"""
+    #     dylib = Path(dylib)
+    #     self.cmd.chmod(dylib)
+    #     self.cmd.install_name_tool_id(f"@loader_path/../Resources/libs/{dylib.name}", dylib)
+
+    # def target_is_executable(self, target: Path | str) -> bool:
+    #     """returns true if target is an executable."""
+    #     target = Path(target)
+    #     return (
+    #         target.is_file()
+    #         and os.access(target, os.X_OK)
+    #         and target.suffix != ".dylib"
+    #     )
+
+    # def target_is_dylib(self, target: Path | str) -> bool:
+    #     """target is a dylib"""
+    #     target = Path(target)
+    #     return target.is_file() and target.suffix == ".dylib"
