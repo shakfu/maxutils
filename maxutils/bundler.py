@@ -13,12 +13,12 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
-from typing import Set, Union, Optional
+from typing import Set, Optional
 
 from macholib import macho_standalone
 
 
-Pathlike = Union[Path, str]
+
 
 PATTERNS = [
     "/opt/local/",
@@ -67,7 +67,7 @@ INFO_PLIST_TMPL = """\
 
 
 class BundleFolder:
-    def __init__(self, path: Pathlike):
+    def __init__(self, path: Path | str):
         self.path = Path(path)
 
     def create(self):
@@ -76,7 +76,7 @@ class BundleFolder:
             self.path.mkdir(exist_ok=True, parents=True)
         assert self.path.is_dir(), f"{self.path} is not a directory"
 
-    def copy(self, src: Pathlike):
+    def copy(self, src: Path | str):
         """recursive copy from src to bundle folder"""
         src = Path(src)
         shutil.copytree(src, self.path / src.name)
@@ -97,15 +97,15 @@ class Bundle:
 
     def __init__(
         self,
-        target: Pathlike,
+        target: Path | str,
         version: str = "1.0",
-        add_to_resources: Optional[list[str]] = None,
+        add_to_resources: Optional[list[str| Path]] = None,
         base_id: str = "org.me",
         extension: str = ".app",
     ):
         self.target = Path(target)
         self.version = version
-        self.add_to_resources = add_to_resources
+        self.add_to_resources = add_to_resources or []
         self.base_id = base_id
         self.extension = extension
         # folders
@@ -168,7 +168,7 @@ class Bundle:
 
 
 def make_bundle(
-    target: Pathlike,
+    target: Path | str,
     version: str = "1.0",
     add_to_resources: Optional[list[str]] = None,
     prefix: str = "org.me",
@@ -214,8 +214,8 @@ def make_bundle(
     if add_to_resources:
         bundle_resources.mkdir(exist_ok=True, parents=True)
         for resource in add_to_resources:
-            resource = Path(resource)
-            shutil.copytree(resource, bundle_resources / resource.name)
+            _resource = Path(resource)
+            shutil.copytree(_resource, bundle_resources / _resource.name)
 
     macho_standalone.standaloneApp(bundle)
 
@@ -230,8 +230,8 @@ class DependencyTree:
 
     def __init__(self, target: str):
         self.target = target
-        self.install_names = {}
-        self.dependencies = []
+        self.install_names: dict[str, set[tuple[str, str]]] = {}
+        self.dependencies: list[str] = []
 
     def get_dependencies(self, target: Optional[str] = None):
         """get dependencies in tree structure and as a list of paths"""
