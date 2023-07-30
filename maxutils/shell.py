@@ -98,6 +98,24 @@ class MacShellCmd(ShellCmd):
         self.log.info(_cmd)
         self.cmd(_cmd)
 
+    def install_name_tool_id(self, new_id, target):
+        """change dynamic shared library install names"""
+        _cmd = f"install_name_tool -id '{new_id}' '{target}'"
+        self.log.info(_cmd)
+        self.cmd(_cmd)
+
+    def install_name_tool_change(self, src, dst, target):
+        """change dependency reference"""
+        _cmd = f"install_name_tool -change '{src}' '{dst}' '{target}'"
+        self.log.info(_cmd)
+        self.cmd(_cmd)
+
+    def install_name_tool_add_rpath(self, rpath, target):
+        """change dependency reference"""
+        _cmd = f"install_name_tool -add_rpath '{rpath}' '{target}'"
+        self.log.info(_cmd)
+        self.cmd(_cmd)
+
     def notify(self, title: str, txt: str):
         """notify via macos, notifcation with title and text."""
         self.cmd(
