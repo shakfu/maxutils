@@ -41,12 +41,14 @@ class ExternalFixer:
         backref: Optional[str] = None,
     ):
         self.path = Path(path)
-        self.external = Namespace(**{
-            'contents':  self.path / "Contents",
-            'frameworks': self.path / "Contents" / "Frameworks",
-            'resources': self.path / "Contents" / "Resources",
-            'executable': self.path / "Contents" / "MacOS" / self.path.stem
-        })
+        self.external = Namespace(
+            **{
+                "contents": self.path / "Contents",
+                "frameworks": self.path / "Contents" / "Frameworks",
+                "resources": self.path / "Contents" / "Resources",
+                "executable": self.path / "Contents" / "MacOS" / self.path.stem,
+            }
+        )
         self.dest_dir = Path(dest_dir) if dest_dir else self.external.frameworks
         self.backref = backref or "@loader_path/../Frameworks"
         assert self.is_valid(self.path)
@@ -79,10 +81,10 @@ class ExternalFixer:
 
     def process(self):
         """process external"""
-        self.get_references()       # immediate non-system dependencies
+        self.get_references()  # immediate non-system dependencies
         self.get_all_dependencies()
         self.process_dependencies()
-        self.copy_dependencies()    # copy dependenciess to dest folder in external
+        self.copy_dependencies()  # copy dependenciess to dest folder in external
         self.change_libs_install_names()
         self.change_exec_install_names()
         self.fix_broken_signatures()
@@ -135,9 +137,7 @@ class ExternalFixer:
         """process dependencies"""
         for dep in self.dependencies:
             _, dep_filename = os.path.split(dep)
-            self.dep_list.append(
-                (dep, f"@rpath/{dep_filename}")
-            )
+            self.dep_list.append((dep, f"@rpath/{dep_filename}"))
 
     def copy_dependencies(self):
         """copy dependencies"""
@@ -187,7 +187,13 @@ class ExternalFixer:
                     dep_path, dep_filename = os.path.split(path)
 
                     dest = os.path.join(self.backref, dep_filename)
-                    cmdline = ["install_name_tool", "-change", path, dest, self.external.executable]
+                    cmdline = [
+                        "install_name_tool",
+                        "-change",
+                        path,
+                        dest,
+                        self.external.executable,
+                    ]
                     subprocess.call(cmdline)
 
     def fix_broken_signatures(self):
@@ -207,7 +213,6 @@ class ExternalFixer:
             print(f"Re-signing {pathname} with ad-hoc signature...")
             cmd = _codesign_cmd + [pathname]
             subprocess.check_call(cmd)
-
 
     def is_valid_path(self, dep_path: Path | str) -> bool:
         """returns true if path references a relocatable local dependency."""

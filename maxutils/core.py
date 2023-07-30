@@ -24,7 +24,6 @@ import logging
 import os
 import pathlib
 import platform
-import subprocess
 import sysconfig
 import zipfile
 import plistlib
@@ -73,9 +72,11 @@ ENTITLEMENTS = {
     },
 }
 
+
 def get_var(name):
     """shortcut to obtain sysconfig variable"""
     return sysconfig.get_config_var(name)
+
 
 def get_path(name):
     """shortcut to obtain sysconfig variabe as Path"""
@@ -124,7 +125,7 @@ class MaxProduct(abc.ABC):
         """set cache entries"""
         config = configparser.ConfigParser()
         config["cache"] = kwds
-        with open(self.cache, "w", encoding='utf8') as configfile:
+        with open(self.cache, "w", encoding="utf8") as configfile:
             config.write(configfile)
 
     def cache_get(self, key, as_path=False):
@@ -246,7 +247,7 @@ class MaxProductManager(abc.ABC):
         else:
             entitlements_dict = kwds
         output_path = destination_folder / "entitlements.plist"
-        with open(output_path, "w", encoding='utf8') as fopen:
+        with open(output_path, "w", encoding="utf8") as fopen:
             fopen.write(plistlib.dumps(entitlements_dict).decode())
 
     def sign(self):
@@ -280,7 +281,6 @@ class MaxProductManager(abc.ABC):
                     target,
                     dev_id=self.dev_id,
                     entitlements=str(self.entitlements),
-
                 )
                 signer.process()
 
@@ -386,7 +386,7 @@ class MaxPackageManager(MaxProductManager):
         self.cmd.remove(srcfolder)
         env_file = os.getenv("GITHUB_ENV")
         if env_file:
-            with open(env_file, "a", encoding='utf8') as fopen:
+            with open(env_file, "a", encoding="utf8") as fopen:
                 fopen.write(f"PRODUCT_DMG={self.product.dmg}")
 
     def sign_dmg(self):
@@ -515,6 +515,3 @@ class MaxReleaseManager:
     def staple_dmg(self):
         """staple .dmg"""
         self.manager.staple_dmg()
-
-
-
