@@ -43,6 +43,7 @@ def option_group(*options):
 
     return _decorator
 
+
 class MetaCommander(type):
     """Metaclass to provide argparse boilerplate features to its instance class"""
 
@@ -83,7 +84,6 @@ class Commander(metaclass=MetaCommander):
             subparser.add_argument(*args, **kwds)
         subparser.set_defaults(func=subcmd["func"])
         return subparser
-
 
     def cmdline(self):
         """Main commandline function to process commandline arguments and options."""
@@ -132,7 +132,9 @@ class Commander(metaclass=MetaCommander):
                 else:  # (x:xs)
                     if head in structure:
                         _subparsers = structure[head]
-                        subparser = self._add_parser(_subparsers, subcmd, name="_".join(tail))
+                        subparser = self._add_parser(
+                            _subparsers, subcmd, name="_".join(tail)
+                        )
 
         if len(sys.argv) <= 1:
             options = parser.parse_args(self.default_args)

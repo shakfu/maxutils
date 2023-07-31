@@ -238,7 +238,8 @@ class ExternalFixer:
     #     """Change id of a shared library to external's 'Resources' folder"""
     #     dylib = Path(dylib)
     #     self.cmd.chmod(dylib)
-    #     self.cmd.install_name_tool_id(f"@loader_path/../Resources/libs/{dylib.name}", dylib)
+    #     self.cmd.install_name_tool_id(
+    #         f"@loader_path/../Resources/libs/{dylib.name}", dylib)
 
     # def target_is_executable(self, target: Path | str) -> bool:
     #     """returns true if target is an executable."""

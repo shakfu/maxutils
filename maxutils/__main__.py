@@ -5,33 +5,11 @@
 """
 from pathlib import Path
 
-from .cli import Commander, option, arg, option_group
+from .cli import Commander, option, arg
 from . import standalone
 
 # ----------------------------------------------------------------------------
 # Commandline interface
-
-# common_options = option_group(
-#     option(
-#         "-p",
-#         "--python-version",
-#         type=str,
-#         help="set required python version to download and build",
-#     ),
-#     option(
-#         "-d", "--download", action="store_true", help="download python build/downloads"
-#     ),
-#     option("-r", "--reset", action="store_true", help="reset python build"),
-#     option("-i", "--install", action="store_true", help="install python to build/lib"),
-#     option("-b", "--build", action="store_true", help="build python in build/src"),
-#     option("-c", "--clean", action="store_true", help="clean python in build/src"),
-#     option("-z", "--ziplib", action="store_true", help="zip python library"),
-#     option("--dump", action="store_true", help="dump project and product vars"),
-#     option("--release", action="store_true", help="set configuration to release"),
-# )
-
-# combined_options = common_options + relocatable_options
-
 
 
 class Application(Commander):

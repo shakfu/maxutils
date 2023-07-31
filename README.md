@@ -44,6 +44,7 @@ The scripts are in the `scripts` directory and are most;y written in bash or in 
 
 - [shrink.py](shrink.py): recursively 'thins' a folder of fat binaries by dropping uneeded architectures from binaries within the folder. This is not max specific and can be used in any macOS folder which contains fat binaries (even if they are deeply nested).
 
-## maxutils: a python package of max utilities
+## maxutils: max utilities in a python package
 
 Since it was observed that a number of the scripts kept re-inventing the wheel, there is a (grand unification) project, currently called `maxutils`, to refactor as much as possible and create a unified python package which will have an argparse-based interface. This project under development and still not functional.
+

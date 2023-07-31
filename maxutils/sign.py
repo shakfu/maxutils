@@ -16,7 +16,7 @@ class CodesignExternal:
     def __init__(
         self,
         path: str | Path,
-        dev_id: str = "-",
+        dev_id: Optional[str]  = None,
         entitlements: Optional[str] = None,
     ):
         self.path = Path(path)

@@ -1,4 +1,4 @@
-# from .core import (
-#     MaxStandalone, MaxExternal, MaxPackage,
-#     MaxStandaloneManager, MaxExternalManager, MaxPackageManager,
-#     MaxReleaseManager)
+from .core import MaxReleaseManager
+
+
+__all__ = ["MaxReleaseManager"]
