@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
 """maxutils.py
 
-MaxProduct
-    MaxStandalone(MaxProduct)
-    MaxPackage(MaxProduct)
-    MaxExternal(MaxProduct)
-
-MaxProductManager:
-    MaxExternalManager(MaxProductManager)
-    MaxStandaloneManager(MaxProductManager)
-    MaxPackageManager(MaxProductManager)
-
 MaxReleaseManager(path, version=None)
-    selects product_class from path
-    delegates to manager, one of
-        MaxExternalManager(product)
-        MaxStandaloneManager(product)
-        MaxPackageManager(product)
+    creates specialized max_product instance from path, one of
+        MaxStandalone(MaxProduct)
+        MaxPackage(MaxProduct)
+        MaxExternal(MaxProduct)
+    delegates to corresponding max product manager, one of
+        MaxStandaloneManager(MaxProductManager)
+        MaxPackageManager(MaxProductManager)
+        MaxExternalManager(MaxProductManager)
 """
 import abc
 import configparser
@@ -32,8 +25,7 @@ from typing import Optional
 
 from .shell import ShellCmd
 from .sign import CodesignExternal
-
-DEBUG = False
+from .config import DEBUG
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(funcName)s - %(message)s",

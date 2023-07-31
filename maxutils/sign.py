@@ -117,7 +117,6 @@ class CodesignExternal:
         """sign internal binaries"""
         codesign_cmd = " ".join(self._cmd_codesign + [str(path)])
         self.cmd(codesign_cmd)
-        # self.cmd_check(self._cmd_codesign + [str(path)])
 
     def sign_runtime(self, path=None):
         """sign top-level bundle runtime"""
@@ -134,11 +133,6 @@ class CodesignExternal:
             ]
         )
         self.cmd(codesign_runtime)
-        # self.cmd_check(self._cmd_codesign + [
-        #      "--options", "runtime",
-        #      "--entitlements", str(self.entitlements),
-        #      str(self.path)
-        # ])
 
     def process(self):
         """main process to recursive sign."""

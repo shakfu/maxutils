@@ -12,10 +12,9 @@ from typing import Optional
 from argparse import Namespace
 
 from .shell import MacShellCmd as ShellCmd
+from .config import DEBUG
 
-# from .config import LOG_FORMAT, LOG_LEVEL
 
-DEBUG = False
 LOG_LEVEL = logging.DEBUG if DEBUG else logging.INFO
 LOG_FORMAT = "%(relativeCreated)-4d %(levelname)-5s: %(name)-10s %(message)s"
 

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Union, Optional, Any
 
 from .shell import MacShellCmd as ShellCmd
+from .config import DEBUG
 
 __all__ = ["Standalone"]
 
@@ -27,10 +28,8 @@ PathLike = Union[str, Path]
 # ----------------------------------------------------------------------------
 # CONSTANTS
 
-DEBUG = True
-
 CONFIG: dict[str, Any] = {
-    "standalone": "Groovin.app",
+    "standalone": "External.app",
     "arch": "dual",
     "app_version": "0.1.2",
     "dev_id": "Bugs Bunny",
@@ -353,7 +352,7 @@ class CodeSigner:
         self.sign_group("externals", "Contents/Resources/C74/**/*.{ext}")
         self.sign_group("frameworks", "Contents/Frameworks/**/*.{ext}")
         self.sign_runtime()
-        self.log.info("app codesigning DONE")
+        self.log.info("%s codesigning DONE", self.appname)
         if self.packaging == "pkg":
             self.log.info(
                 "converting signed {self.path} into pkg for pkg signing / notarization"
@@ -366,7 +365,7 @@ class CodeSigner:
             )
             self.dmg(self.path, self.dmg_path, self.dev_id)
             return self.dmg_path
-        self.log.info("zipping signed {self.path} for notarization")
+        self.log.info("zipping signed %s for notarization", self.path)
         self.cmd.zip(self.path, self.zip_path)
         return self.zip_path
 
@@ -576,35 +575,23 @@ class Standalone:
 
     def process_as_zip(self) -> PathLike:
         """zip automated process"""
-        processed = PreProcessor(
-            self.path, self.arch, self.remove_attrs, self.norm_perms
-        ).process()
+        processed = PreProcessor(self.path, self.arch, self.remove_attrs, self.norm_perms).process()
         signed_zip = CodeSigner(processed, self.dev_id).process()
-        output_dir = Notarizer(
-            signed_zip, self.apple_id, self.app_password, self.app_bundle_id
-        ).process()
+        output_dir = Notarizer(signed_zip, self.apple_id, self.app_password, self.app_bundle_id).process()
         return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
 
     def process_as_pkg(self) -> PathLike:
         """pkg automated process"""
-        processed = PreProcessor(
-            self.path, self.arch, self.remove_attrs, self.norm_perms
-        ).process()
-        signed_pkg = CodeSigner(processed, self.dev_id, packaging="pkg").process()
-        output_dir = Notarizer(
-            signed_pkg, self.apple_id, self.app_password, self.app_bundle_id
-        ).process()
+        preprocessed = PreProcessor(self.path, self.arch, self.remove_attrs, self.norm_perms).process()
+        signed_pkg = CodeSigner(preprocessed, self.dev_id, packaging="pkg").process()
+        output_dir = Notarizer(signed_pkg, self.apple_id, self.app_password, self.app_bundle_id).process()
         return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
 
     def process_as_dmg(self) -> PathLike:
         """dmg automated process"""
-        processed = PreProcessor(
-            self.path, self.arch, self.remove_attrs, self.norm_perms
-        ).process()
-        signed_dmg = CodeSigner(processed, self.dev_id, packaging="dmg").process()
-        output_dir = Notarizer(
-            signed_dmg, self.apple_id, self.app_password, self.app_bundle_id
-        ).process()
+        preprocessed = PreProcessor(self.path, self.arch, self.remove_attrs, self.norm_perms).process()
+        signed_dmg = CodeSigner(preprocessed, self.dev_id, packaging="dmg").process()
+        output_dir = Notarizer(signed_dmg, self.apple_id, self.app_password, self.app_bundle_id).process()
         return Distributor(output_dir, self.dev_id, self.version, self.arch).process()
 
     @classmethod

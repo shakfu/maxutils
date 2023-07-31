@@ -15,7 +15,7 @@ import pathlib
 import subprocess
 import sys
 
-DEBUG = True
+from .config import DEBUG
 
 
 logging.basicConfig(

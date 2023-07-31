@@ -3,7 +3,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-DEBUG = False
+from .config import DEBUG
+
+
 
 class ShellCmd:
     """Provides platform agnostic file/folder handling."""
