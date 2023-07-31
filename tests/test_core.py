@@ -4,13 +4,13 @@ import shutil
 
 import pytest
 
-from ..core import (
+from maxutils.core import (
     MaxStandalone, MaxExternal, MaxPackage,
     MaxStandaloneManager, MaxExternalManager, MaxPackageManager,
     MaxReleaseManager,
 )
 
-FIXTURE_DIR = pathlib.Path('fixtures')
+FIXTURE_DIR = pathlib.Path('tests/fixtures')
 
 def remove_detritus(fixture_dir):
     detritus = fixture_dir / '__MACOSX'

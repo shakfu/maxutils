@@ -1,0 +1,31 @@
+[project]
+name = "maxutils"
+description = "Release utilities for Max/MSP products"
+version = "0.1.0"
+authors = [{ name = "Shakeeb Alireza", email = "me@me.org" }]
+readme = "README.md"
+keywords = ["Max", "Max/MSP", "utilities"]
+license = {text = "Public Domain"}
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: Public Domain",
+    "Topic :: Utilities"
+]
+dependencies = []
+
+# dynamic = ["version"]
+
+
+[project.optional-dependencies]
+dev = []
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+
+[project.scripts]
+maxutils = "maxutils.__main__:commandline"
+
+
