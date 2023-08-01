@@ -1,7 +1,9 @@
 import os
 import shutil
 import subprocess
+import logging
 from pathlib import Path
+from typing import Optional
 
 from .config import DEBUG
 
@@ -10,8 +12,11 @@ from .config import DEBUG
 class ShellCmd:
     """Provides platform agnostic file/folder handling."""
 
-    def __init__(self, log):
-        self.log = log
+    def __init__(self, log: Optional[logging.Logger] = None):
+        if not log:
+           self.log = logging.getLogger(self.__class__.__name__)
+        else:
+            self.log = log
 
     def cmd(self, shellcmd: str, *args, **kwargs):
         """Run shell command with args and keywords"""
@@ -26,19 +31,33 @@ class ShellCmd:
         self.log.debug(" ".join(arglist))
         return subprocess.check_output(arglist, encoding="utf8")
 
-    def cmd_check(self, arglist: list[str]) -> str:
-        """capture and check shell _cmd output."""
-        res = subprocess.run(
-            arglist,
-            capture_output=True,
-            encoding="utf8",
-            check=True,
-        )
-        if res.returncode != 0:
-            self.log.critical(res.stderr)
-        else:
-            self.log.debug(" ".join(["DONE"] + arglist))
-        return str(res)
+    def check(self, arglist: list[str], expected: Optional[list[str]] = None) -> bool:
+        """capture and check shell cmd output."""
+        try:
+            res = subprocess.run(
+                arglist,
+                capture_output=True,
+                encoding="utf8",
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self.log.critical(e.stderr)
+            return False
+
+        # success res is subprocess.CompletedProcess instance
+        output = str(res.stdout)
+
+        if expected:
+            if all((msg in output or msg in res.stderr) for msg in expected):
+                self.log.debug(" ".join(["VERIFIED"] + arglist))
+                return True
+            else:
+                self.log.warning("Output not verified: stdout: \"%s\" stderr: \"%s\"", 
+                    output, res.stderr)
+                return False
+        else: # no return is True case
+            self.log.debug("no return expected -- PASSED")
+            return output == ""
 
     def chdir(self, path: Path | str):
         """Change current workding directory to path"""

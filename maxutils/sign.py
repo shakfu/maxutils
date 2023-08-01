@@ -10,8 +10,13 @@ from .shell import MacShellCmd as ShellCmd
 class CodesignExternal:
     """Recursively codesign an external."""
 
-    FILE_EXTENSIONS = [".so", ".dylib"]
     FOLDER_EXTENSIONS = [".mxo", ".framework", ".app", ".bundle"]
+    FILE_EXTENSIONS = [".so", ".dylib"]
+    FILE_PATTERNS = {
+        "pattern1": "runtime",
+        "pattern2": "runtime",
+        "pattern3": "runtime",
+    }
 
     def __init__(
         self,
@@ -20,11 +25,7 @@ class CodesignExternal:
         entitlements: Optional[str] = None,
     ):
         self.path = Path(path)
-        self.authority: Optional[str] = (
-            f"Developer ID Application: {dev_id}"
-            if (dev_id and dev_id != "-")
-            else None
-        )
+        self.dev_id = dev_id or os.getenv("DEV_ID")
         self.entitlements = entitlements
         self.targets = argparse.Namespace(
             **{
@@ -39,17 +40,20 @@ class CodesignExternal:
         self._cmd_codesign = [
             "codesign",
             "--sign",
-            repr(self.authority) if self.authority else "-",
+            f"{self.authority}",
             "--timestamp",
             "--deep",
             "--force",
         ]
 
-        self.FILE_PATTERNS = {
-            "pattern1": "runtime",
-            "pattern2": "runtime",
-            "pattern3": "runtime",
-        }
+
+    @property
+    def authority(self) -> str:
+        """authority includes developer id"""
+        if self.dev_id and self.dev_id != "-":
+            return repr(f"Developer ID Application: {self.dev_id}")
+        else:
+            return "-"
 
     @staticmethod
     def match_suffix(target: Path):
@@ -63,14 +67,28 @@ class CodesignExternal:
 
     def is_binary(self, path):
         """returns True if file is a binary file."""
-        txt = str(self.cmd.cmd_check(["file", "-b", str(path)]))
+        txt = str(self.cmd.check(["file", "-b", str(path)]))
         if txt:
             return "binary" in txt.split()
         return False
 
+    def is_signed(self) -> bool:
+        """check if external is signed"""
+        return self.cmd.check(
+            ["codesign", "--verify", "--verbose", str(self.path)],
+            expected = ["valid on disk", "satisfies its Designated Requirement"]
+        )
+
+    def is_adhoc_signed(self) -> bool:
+        """check if external signature is an ad hoc signature"""
+        return self.cmd.check(
+            ["codesign", "--display", "--verbose", str(self.path)],
+            expected = ["Signature=adhoc"]
+        )
+
     def verify(self, path):
         """verifies codesign of path"""
-        self.cmd(f"codesign --verify --verbose {path}")
+        return self.cmd.check(["codesign", "--verify", str(self.path)])
 
     def section(self, *args):
         """display section"""
@@ -113,6 +131,10 @@ class CodesignExternal:
                         else:
                             self.targets.internals.add(path)
 
+    def remove_signature(self):
+        """remove signature"""
+        self.cmd(f"codesign --remove-signature {self.path}")
+
     def sign_internal_binary(self, path: Path):
         """sign internal binaries"""
         codesign_cmd = " ".join(self._cmd_codesign + [str(path)])
@@ -122,16 +144,16 @@ class CodesignExternal:
         """sign top-level bundle runtime"""
         if not path:
             path = self.path
-        codesign_runtime = " ".join(
-            self._cmd_codesign
-            + [
-                "--options",
-                "runtime",
-                "--entitlements",
-                str(self.entitlements),
-                str(path),
-            ]
-        )
+        _cmds = [
+            "--options",
+            "runtime",
+        ]
+        if self.entitlements:
+            _cmds.append("--entitlements")
+            _cmds.append(str(self.entitlements))
+
+        _cmds.append(str(path))
+        codesign_runtime = " ".join(self._cmd_codesign + _cmds)
         self.cmd(codesign_runtime)
 
     def process(self):
@@ -166,7 +188,8 @@ class CodesignExternal:
         self.sign_runtime()
 
         self.section("VERIFYING SIGNATURE")
-        self.verify(self.path)
+        if not self.verify(self.path):
+            raise Exception("not verified")
 
         print()
         self.log.info("DONE!")
